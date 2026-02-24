@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gudform"
+version = "1.1.0"
+description = "Official Python SDK for the GudForm API"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+keywords = ["gudform", "forms", "api", "sdk", "survey"]
+
+[project.urls]
+Homepage = "https://gudform.com"
+Documentation = "https://gudform.com/docs"
