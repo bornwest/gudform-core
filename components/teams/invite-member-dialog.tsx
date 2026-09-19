@@ -42,8 +42,18 @@ export function InviteMemberDialog({ teamId }: InviteMemberDialogProps) {
     try {
       const invite = await inviteToTeam(teamId, email.trim(), role);
       const inviteUrl = `${window.location.origin}/invite/${invite.token}`;
-      await navigator.clipboard.writeText(inviteUrl);
-      toast.success("Invite link copied to clipboard!");
+      try {
+        await navigator.clipboard.writeText(inviteUrl);
+      } catch {
+        // Clipboard can be blocked; the toast still tells them what happened.
+      }
+      if (invite.emailSent) {
+        toast.success("Invitation emailed. Link also copied to clipboard.");
+      } else {
+        toast.success(
+          `Email is not configured. Share this invite link: ${inviteUrl}`,
+        );
+      }
       setOpen(false);
       setEmail("");
     } catch (error: any) {
@@ -65,7 +75,8 @@ export function InviteMemberDialog({ teamId }: InviteMemberDialogProps) {
         <DialogHeader>
           <DialogTitle>Invite Member</DialogTitle>
           <DialogDescription>
-            Generate an invite link for a new team member.
+            Email an invitation with a join link. They can create an account
+            from the link if they do not have one yet.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
@@ -103,7 +114,7 @@ export function InviteMemberDialog({ teamId }: InviteMemberDialogProps) {
             onClick={handleInvite}
             disabled={sending || !email.trim()}
           >
-            {sending ? "Creating invite..." : "Create Invite Link"}
+            {sending ? "Sending invite..." : "Send invitation"}
           </Button>
         </DialogFooter>
       </DialogContent>
