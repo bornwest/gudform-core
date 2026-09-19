@@ -5,6 +5,7 @@ import Resend from "next-auth/providers/resend";
 import bcrypt from "bcryptjs";
 
 import { env } from "@/env.mjs";
+import { getEmailFrom } from "@/lib/email";
 import { loginSchema } from "@/lib/validations/auth";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
@@ -27,7 +28,7 @@ if (env.RESEND_API_KEY) {
   providers.push(
     Resend({
       apiKey: env.RESEND_API_KEY,
-      from: "GudForm <onboarding@resend.dev>",
+      from: getEmailFrom(),
     }),
   );
 }

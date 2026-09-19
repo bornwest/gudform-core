@@ -1,4 +1,4 @@
-import { getResend } from "@/lib/email";
+import { getEmailFrom, getResend } from "@/lib/email";
 import { escapeHtml } from "@/lib/html-escape";
 import { env } from "@/env.mjs";
 import { siteConfig } from "@/config/site";
@@ -21,7 +21,7 @@ export async function sendTeamInviteEmail(opts: {
   const safeUrl = escapeHtml(inviteUrl);
 
   await client.emails.send({
-    from: `${siteConfig.name} <onboarding@resend.dev>`,
+    from: getEmailFrom(),
     to:
       process.env.NODE_ENV === "development"
         ? "delivered@resend.dev"
