@@ -1,0 +1,75 @@
+# Paths omitted from the public gudlab/gudform-core export.
+# Patterns are rsync --exclude-from (repo-root relative).
+# Do not use unescaped [brackets] — rsync treats them as character classes.
+
+.git/
+.next/
+node_modules/
+uploads/
+pnpm-store/
+.codelf/
+.claude/
+.agents/
+skills/
+.env
+.env.local
+.env.loc
+.env.production
+.env*.local
+*.pem
+.DS_Store
+dist-oss/
+
+# Private sync (would push this tree as-is)
+.github/workflows/sync-oss.yml
+scripts/sync-oss.sh
+scripts/oss-ci.yml
+docs/hosted-saas.md
+docs/oss-sync.md
+docs/superpowers/
+docs/next-steps.md
+docs/overnight-report.md
+docs/deferred-security-findings.md
+docs/QA_FEATURE_MATRIX.md
+docs/roadmap.md
+docs/integrations-how-to-setup.md
+docs/integrations-setup.md
+FORM_VERSIONING_IMPLEMENTATION.md
+TESTING_BUG_FIXES.md
+TESTING_CLASSIC_FORM.md
+integrations.md
+
+# Hosted billing / subscriptions
+app/(protected)/dashboard/billing/
+app/(protected)/dashboard/settings/payments/
+app/(marketing)/pricing/
+app/(marketing)/free-pricing/
+app/api/webhooks/stripe/
+app/api/webhooks/stripe-connect/
+app/f/*/payment/
+app/f/*/payment-success/
+app/f/*/payment-cancel/
+actions/stripe-actions.ts
+actions/stripe-connect-actions.ts
+lib/stripe.ts
+lib/stripe-connect.ts
+components/billing/
+components/settings/stripe-connect-setup.tsx
+
+# Integrations marketplace + developer portal
+app/(marketing)/integrations/
+app/(marketing)/docs/integrations/
+app/(protected)/dashboard/integrations/
+app/(protected)/admin/integrations/
+app/api/integrations/
+lib/integrations/
+lib/integration-delivery.ts
+lib/google-drive.ts
+actions/integration-actions.ts
+actions/developer-actions.ts
+prisma/seed-integrations.ts
+lib/validations/developer.ts
+
+# Paid template checkout (built-in/free templates stay)
+app/api/templates/*/purchase/
+
