@@ -1,13 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { useEffect, useState, useTransition } from "react";
+import { Gift, Search, ChevronLeft, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
+
+import { SubscriptionPlan } from "@/config/subscriptions";
 
 import { formatDate } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { getAdminUsers } from "@/actions/admin-actions";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  getAdminUsers,
+  giftSubscription,
+  revokeSubscription,
+} from "@/actions/admin-actions";
 
 type UserRow = Awaited<ReturnType<typeof getAdminUsers>>["users"][number];
 
@@ -18,6 +40,13 @@ export default function AdminUsersPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [isPending, startTransition] = useTransition();
+
+  // Gift dialog state
+  const [giftUser, setGiftUser] = useState<UserRow | null>(null);
+  const [giftPlan, setGiftPlan] = useState<SubscriptionPlan>(
+    SubscriptionPlan.PRO,
+  );
 
   const loadUsers = async (p: number, q?: string) => {
     setLoading(true);
@@ -35,6 +64,36 @@ export default function AdminUsersPage() {
 
   const handleSearch = () => {
     loadUsers(1, search);
+  };
+
+  const handleGift = () => {
+    if (!giftUser) return;
+    startTransition(async () => {
+      try {
+        await giftSubscription(giftUser.id, giftPlan);
+        toast.success(
+          `Gifted ${giftPlan} plan to ${giftUser.name || giftUser.email}`,
+        );
+        setGiftUser(null);
+        await loadUsers(page, search || undefined);
+      } catch (err: any) {
+        toast.error(err.message || "Failed to gift subscription");
+      }
+    });
+  };
+
+  const handleRevoke = (user: UserRow) => {
+    startTransition(async () => {
+      try {
+        await revokeSubscription(user.id);
+        toast.success(
+          `Revoked subscription for ${user.name || user.email}`,
+        );
+        await loadUsers(page, search || undefined);
+      } catch (err: any) {
+        toast.error(err.message || "Failed to revoke subscription");
+      }
+    });
   };
 
   return (
@@ -72,21 +131,23 @@ export default function AdminUsersPage() {
             <thead>
               <tr className="border-b bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium">User</th>
-                <th className="px-4 py-3 text-left font-medium">Role</th>
+                <th className="px-4 py-3 text-left font-medium">Plan</th>
                 <th className="px-4 py-3 text-left font-medium">Forms</th>
                 <th className="px-4 py-3 text-left font-medium">Joined</th>
+                <th className="px-4 py-3 text-left font-medium">Period End</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     Loading...
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                  <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
                     No users found
                   </td>
                 </tr>
@@ -97,24 +158,55 @@ export default function AdminUsersPage() {
                       <div>
                         <p className="font-medium">
                           {u.name || "Unnamed"}
+                          {u.role === "ADMIN" && (
+                            <span className="ml-1.5 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                              ADMIN
+                            </span>
+                          )}
                         </p>
                         <p className="text-muted-foreground">{u.email}</p>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      {u.role === "ADMIN" ? (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                          ADMIN
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-300">
-                          USER
-                        </span>
-                      )}
+                      <PlanBadge plan={u.subscription?.plan || "FREE"} />
                     </td>
                     <td className="px-4 py-3">{u._count.forms}</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {formatDate(u.createdAt.toISOString())}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {u.subscription?.stripeCurrentPeriodEnd
+                        ? formatDate(
+                            u.subscription.stripeCurrentPeriodEnd.toISOString(),
+                          )
+                        : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setGiftUser(u);
+                            setGiftPlan(SubscriptionPlan.PRO);
+                          }}
+                        >
+                          <Gift className="mr-1 size-3" />
+                          Gift
+                        </Button>
+                        {u.subscription &&
+                          u.subscription.plan !== "FREE" && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-destructive"
+                              onClick={() => handleRevoke(u)}
+                              disabled={isPending}
+                            >
+                              Revoke
+                            </Button>
+                          )}
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -150,6 +242,79 @@ export default function AdminUsersPage() {
           </div>
         </div>
       )}
+
+      {/* Gift Dialog */}
+      <Dialog open={!!giftUser} onOpenChange={() => setGiftUser(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Gift Subscription</DialogTitle>
+            <DialogDescription>
+              Gift a subscription plan to{" "}
+              <strong>{giftUser?.name || giftUser?.email}</strong>. This will
+              not create a Stripe subscription — the plan is applied directly.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <label className="mb-2 block text-sm font-medium">
+              Select Plan
+            </label>
+            <Select
+              value={giftPlan}
+              onValueChange={(v) => setGiftPlan(v as SubscriptionPlan)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={SubscriptionPlan.STARTER}>
+                  Starter ($5/mo value)
+                </SelectItem>
+                <SelectItem value={SubscriptionPlan.PRO}>
+                  Pro ($19/mo value)
+                </SelectItem>
+                <SelectItem value={SubscriptionPlan.BUSINESS}>
+                  Business ($49/mo value)
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            {giftUser?.subscription?.stripeSubscriptionId && (
+              <p className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+                This user has an active Stripe subscription. Gifting will
+                override their plan but won&apos;t cancel the Stripe
+                subscription.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setGiftUser(null)}>
+              Cancel
+            </Button>
+            <Button onClick={handleGift} disabled={isPending}>
+              <Gift className="mr-2 size-4" />
+              Gift {giftPlan} Plan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+function PlanBadge({ plan }: { plan: string }) {
+  const styles: Record<string, string> = {
+    FREE: "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+    STARTER:
+      "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    PRO: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400",
+    BUSINESS:
+      "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400",
+  };
+
+  return (
+    <span
+      className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${styles[plan] || styles.FREE}`}
+    >
+      {plan}
+    </span>
   );
 }
