@@ -1,33 +1,42 @@
 services:
   postgres:
     image: postgres:16-alpine
-    restart: unless-stopped
     environment:
       POSTGRES_USER: gudform
       POSTGRES_PASSWORD: gudform
       POSTGRES_DB: gudform
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gudform"]
+      test: ["CMD-SHELL", "pg_isready -U gudform -d gudform"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+    ports:
+      - "5433:5432"
 
   app:
-    build: .
-    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3080:3000"
+    # Host ports 3080/5433 avoid colliding with local `pnpm dev` (3000) and host Postgres (5432).
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_APP_URL: http://localhost:3080
+      AUTH_URL: http://localhost:3080
+      AUTH_TRUST_HOST: "true"
+      AUTH_SECRET: local-docker-auth-secret-change-me-32ch
+      DATABASE_URL: postgresql://gudform:gudform@postgres:5432/gudform
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_PATH: /data/uploads
+    volumes:
+      - uploads:/data/uploads
     depends_on:
       postgres:
         condition: service_healthy
-    ports:
-      - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql://gudform:gudform@postgres:5432/gudform
 
 volumes:
   postgres_data:
+  uploads:
