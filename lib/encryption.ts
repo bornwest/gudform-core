@@ -7,11 +7,17 @@ const IV_LENGTH = 12; // 96-bit IV for GCM
 const TAG_LENGTH = 16; // 128-bit auth tag
 
 function getKey(): Buffer {
-  const key = Buffer.from(env.ENCRYPTION_KEY, "hex");
+  const hex = env.ENCRYPTION_KEY;
+  if (!hex) {
+    throw new Error(
+      "ENCRYPTION_KEY is required to encrypt OAuth credentials. Generate one with: openssl rand -hex 32",
+    );
+  }
+  const key = Buffer.from(hex, "hex");
   if (key.length !== 32) {
     throw new Error(
       "ENCRYPTION_KEY must be exactly 64 hex characters (32 bytes). " +
-        `Got ${env.ENCRYPTION_KEY.length} hex characters.`,
+        `Got ${hex.length} hex characters.`,
     );
   }
   return key;
