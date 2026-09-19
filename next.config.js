@@ -1,8 +1,10 @@
-import("./env.mjs");
+if (!process.env.SKIP_ENV_VALIDATION) {
+  import("./env.mjs");
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  output: "standalone",
+  ...(process.env.DOCKER_BUILD === "1" ? { output: "standalone" } : {}),
   reactStrictMode: true,
   images: {
     remotePatterns: [
