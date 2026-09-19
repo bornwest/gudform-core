@@ -5,6 +5,7 @@ import { contrastColor } from "@/lib/utils";
 interface FormThemeWrapperProps {
   bgColor: string;
   children: React.ReactNode;
+  fillViewport?: boolean;
 }
 
 /**
@@ -19,12 +20,13 @@ interface FormThemeWrapperProps {
 export function FormThemeWrapper({
   bgColor,
   children,
+  fillViewport = true,
 }: FormThemeWrapperProps) {
   const bgIsDark = contrastColor(bgColor) === "white";
 
   return (
     <div
-      className="min-h-screen"
+      className={fillViewport ? "min-h-screen" : "min-h-0"}
       style={{ colorScheme: bgIsDark ? "dark" : "light" }}
     >
       {children}
