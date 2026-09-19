@@ -1,0 +1,18 @@
+# GitHub Linguist: count app source as TypeScript, not lockfile/fonts/images.
+# Public gudform-core previously reported a null language field.
+
+pnpm-lock.yaml linguist-generated=true
+
+*.ts linguist-language=TypeScript linguist-detectable=true
+*.tsx linguist-language=TypeScript linguist-detectable=true
+*.mts linguist-language=TypeScript linguist-detectable=true
+*.mjs linguist-detectable=true
+
+*.ttf linguist-vendored
+*.woff linguist-vendored
+*.woff2 linguist-vendored
+*.jpg linguist-vendored
+*.jpeg linguist-vendored
+*.png linguist-vendored
+*.ico linguist-vendored
+*.svg linguist-vendored
