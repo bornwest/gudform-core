@@ -7,6 +7,7 @@ export interface QuestionProperties {
   allowMultiple?: boolean;
   minSelections?: number;
   maxSelections?: number;
+  allowOther?: boolean;
   ranking?: boolean;
   pictureChoice?: boolean;
   choiceImages?: (string | null)[];
