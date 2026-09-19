@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { PutObjectCommand } from "@aws-sdk/client-s3";
 
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { getPlatformR2Client, getR2BucketName, getR2PublicUrl } from "@/lib/storage";
+import { putStoredObject } from "@/lib/storage";
+import { checkStorageLimit, getEffectivePlanConfig } from "@/lib/subscription";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -81,30 +81,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Check storage limit
+    const storageCheck = await checkStorageLimit(form.userId, file.size);
+    if (!storageCheck.allowed) {
+      return NextResponse.json(
+        { error: "Storage limit reached. The form owner needs to upgrade their plan." },
+        { status: 413 },
+      );
+    }
+
     // Generate a unique key
     const ext = file.name.includes(".")
       ? `.${file.name.split(".").pop()}`
       : "";
     const uuid = crypto.randomUUID();
     const key = `uploads/${formId}/${uuid}${ext}`;
-
-    const s3 = getPlatformR2Client();
     const arrayBuffer = await file.arrayBuffer();
+    const { url } = await putStoredObject({
+      key,
+      body: Buffer.from(arrayBuffer),
+      contentType: file.type,
+    });
 
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: getR2BucketName(),
-        Key: key,
-        Body: Buffer.from(arrayBuffer),
-        ContentType: file.type,
-      }),
-    );
+    const planConfig = await getEffectivePlanConfig(form.userId);
+    const retentionDays = planConfig.features.fileRetentionDays;
+    const expiresAt = retentionDays
+      ? new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000)
+      : null;
 
-    // Build the public URL
-    const url = `${getR2PublicUrl()}/${key}`;
-
-    // Create FileUpload record (no expiration for self-hosted)
-    const expiresAt = null;
+    // Create FileUpload record
     await prisma.fileUpload.create({
       data: {
         userId: form.userId,

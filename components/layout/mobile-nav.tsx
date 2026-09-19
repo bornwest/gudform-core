@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Menu, X } from "lucide-react";
 import { useSession } from "next-auth/react";
 
+import { isOssEdition } from "@/config/edition";
 import { marketingConfig } from "@/config/marketing";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
@@ -16,7 +17,9 @@ export function NavMobile() {
   const { data: session } = useSession();
   const [open, setOpen] = useState(false);
 
-  const links = marketingConfig.mainNav;
+  const links = marketingConfig.mainNav.filter(
+    (item) => !(item.saasOnly && isOssEdition()),
+  );
 
   useEffect(() => {
     if (open) {

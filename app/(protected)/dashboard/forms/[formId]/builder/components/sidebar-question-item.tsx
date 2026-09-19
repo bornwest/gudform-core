@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { QUESTION_TYPE_META, SCREEN_TYPES } from "./constants";
+import { SCREEN_TYPES, getQuestionDisplayMeta } from "./constants";
 import type { Question } from "./types";
 
 export function SidebarQuestionItem({
@@ -45,7 +45,7 @@ export function SidebarQuestionItem({
   canDuplicate?: boolean;
   canDelete?: boolean;
 }) {
-  const meta = QUESTION_TYPE_META[question.type];
+  const meta = getQuestionDisplayMeta(question);
   const Icon = meta.icon;
   const isScreen = SCREEN_TYPES.includes(question.type);
 

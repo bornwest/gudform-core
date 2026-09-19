@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
-import { Users } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Users } from "lucide-react";
 
 import { getCurrentUser } from "@/lib/session";
+import { getEffectivePlanConfig } from "@/lib/subscription";
 import { getTeams } from "@/actions/team-actions";
 import { DashboardHeader } from "@/components/dashboard/header";
+import { Button } from "@/components/ui/button";
 import { CreateTeamDialog } from "@/components/teams/create-team-dialog";
 
 export const metadata = {
@@ -15,15 +18,46 @@ export default async function TeamsPage() {
   const user = await getCurrentUser();
   if (!user?.id) redirect("/login");
 
+  const planConfig = await getEffectivePlanConfig(user.id);
+  const canCreateTeams = planConfig.features.maxTeamMembers !== 0;
+
   const teams = await getTeams();
 
   return (
     <div className="flex flex-1 flex-col gap-8 p-8">
       <DashboardHeader heading="Teams" text="Create and manage your teams.">
-        <CreateTeamDialog />
+        {canCreateTeams ? (
+          <CreateTeamDialog />
+        ) : (
+          <Link href="/dashboard/billing">
+            <Button variant="outline">
+              Upgrade to Pro
+              <ArrowRight className="ml-2 size-4" />
+            </Button>
+          </Link>
+        )}
       </DashboardHeader>
 
-      {teams.length === 0 ? (
+      {!canCreateTeams && teams.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-12 text-center">
+          <div className="rounded-full bg-muted p-4">
+            <Users className="size-8 text-muted-foreground" />
+          </div>
+          <div>
+            <h3 className="font-semibold">Teams require a Pro or Business plan</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Upgrade your plan to create teams and collaborate with others on
+              forms.
+            </p>
+          </div>
+          <Link href="/dashboard/billing">
+            <Button>
+              View Plans
+              <ArrowRight className="ml-2 size-4" />
+            </Button>
+          </Link>
+        </div>
+      ) : teams.length === 0 ? (
         <div className="flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed p-12 text-center">
           <div className="rounded-full bg-muted p-4">
             <Users className="size-8 text-muted-foreground" />
@@ -39,7 +73,7 @@ export default async function TeamsPage() {
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {teams.map((team) => (
-            <a
+            <Link
               key={team.id}
               href={`/dashboard/teams/${team.id}`}
               className="group rounded-xl border p-6 transition-colors hover:bg-muted/50"
@@ -59,7 +93,7 @@ export default async function TeamsPage() {
                 <span>{team._count.members} members</span>
                 <span>{team._count.forms} forms</span>
               </div>
-            </a>
+            </Link>
           ))}
         </div>
       )}
