@@ -12,6 +12,7 @@ interface FormPageProps {
   }>;
   searchParams: Promise<{
     preview?: string;
+    embed?: string;
   }>;
 }
 
@@ -41,9 +42,10 @@ export default async function PublicFormPage({
   searchParams,
 }: FormPageProps) {
   const { slug } = await params;
-  const { preview } = await searchParams;
+  const { preview, embed } = await searchParams;
 
   const isPreview = preview === "true";
+  const isEmbed = embed === "1" || embed === "true";
   const form = isPreview
     ? await getPreviewForm(slug)
     : await getPublicForm(slug);
@@ -71,6 +73,7 @@ export default async function PublicFormPage({
     backgroundColor: form.backgroundColor,
     themeMode: form.themeMode,
     showProgressBar: form.showProgressBar,
+    displayMode: form.displayMode,
     redirectUrl: form.redirectUrl,
     paymentEnabled: form.paymentEnabled,
     paymentAmount: form.paymentAmount,
@@ -98,7 +101,7 @@ export default async function PublicFormPage({
           Preview Mode — Changes are not live until published
         </div>
       )}
-      <FormRenderer form={formData} isPreview={isPreview} />
+      <FormRenderer form={formData} isPreview={isPreview} isEmbed={isEmbed} />
     </>
   );
 }
