@@ -1,15 +1,14 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { authenticateApiKey } from "@/lib/api-auth";
+import { authorizeApiRequest } from "@/lib/api-auth";
 import { ensureDefaultCollection } from "@/lib/collections";
 
 // GET /api/v1/collections — List all collections
 export async function GET(req: Request) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   // Ensure the user has at least a default collection
   await ensureDefaultCollection(auth.userId);
@@ -32,10 +31,9 @@ export async function GET(req: Request) {
 
 // POST /api/v1/collections — Create a new collection
 export async function POST(req: Request) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const body = await req.json().catch(() => ({}));
   const name = body.name?.trim();
