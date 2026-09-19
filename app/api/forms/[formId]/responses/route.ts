@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 // Public endpoint for submitting form responses
 export async function POST(
@@ -30,7 +31,9 @@ export async function POST(
 
     // Check response limit
     if (form.responseLimit) {
-      const count = await prisma.formResponse.count({ where: { formId } });
+      const count = await prisma.formResponse.count({
+        where: { formId, ...COUNTABLE_RESPONSE_WHERE },
+      });
       if (count >= form.responseLimit) {
         return NextResponse.json(
           { error: "Response limit reached" },
