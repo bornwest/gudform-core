@@ -1,8 +1,15 @@
-import { auth } from "auth"
+import { NextResponse } from "next/server";
+import { auth } from "auth";
 
-// Read more: https://nextjs.org/docs/app/building-your-application/routing/middleware#matcher
-export default auth
+import { isOssEdition, isSaasOnlyPath } from "@/config/edition";
+
+export default auth((req) => {
+  if (isOssEdition() && isSaasOnlyPath(req.nextUrl.pathname)) {
+    return new NextResponse(null, { status: 404 });
+  }
+  return NextResponse.next();
+});
 
 export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
-}
+  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+};
