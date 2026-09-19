@@ -4,6 +4,8 @@ import { getAdminStats } from "@/actions/admin-actions";
 import { UserRole } from "@prisma/client";
 import { ArrowRight, FileText, Inbox, Users, Users2 } from "lucide-react";
 
+import { SubscriptionPlan } from "@/config/subscriptions";
+
 import { getCurrentUser } from "@/lib/session";
 import { formatDate } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
@@ -76,6 +78,61 @@ export default async function AdminPage() {
         </Card>
       </div>
 
+      {/* Plan Distribution */}
+      <div className="mt-8">
+        <h3 className="mb-4 text-lg font-semibold">
+          Subscription Distribution
+        </h3>
+        <div className="grid gap-4 sm:grid-cols-4">
+          {(
+            [
+              {
+                plan: "FREE",
+                label: "Free",
+                color: "bg-gray-100 dark:bg-gray-800",
+              },
+              {
+                plan: "STARTER",
+                label: "Starter",
+                color: "bg-green-100 dark:bg-green-900/30",
+              },
+              {
+                plan: "PRO",
+                label: "Pro",
+                color: "bg-green-100 dark:bg-green-900/30",
+              },
+              {
+                plan: "BUSINESS",
+                label: "Business",
+                color: "bg-teal-100 dark:bg-teal-900/30",
+              },
+            ] as const
+          ).map(({ plan, label, color }) => (
+            <Card key={plan} className="p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-muted-foreground">
+                  {label}
+                </span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${color}`}
+                >
+                  {stats.planDistribution[plan]} users
+                </span>
+              </div>
+              <p className="mt-1 text-2xl font-bold">
+                {stats.totalUsers > 0
+                  ? Math.round(
+                      ((stats.planDistribution[plan] || 0) / stats.totalUsers) *
+                        100,
+                    )
+                  : 0}
+                %
+              </p>
+            </Card>
+          ))}
+        </div>
+      </div>
+
       <div className="mt-8 grid gap-8 lg:grid-cols-2">
         {/* Recent Users */}
         <div>
@@ -104,11 +161,9 @@ export default async function AdminPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
-                    {u.role === "ADMIN" && (
-                      <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                        Admin
-                      </span>
-                    )}
+                    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">
+                      {u.subscription?.plan || "FREE"}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       {formatDate(u.createdAt.toISOString())}
                     </span>

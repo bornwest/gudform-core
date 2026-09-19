@@ -11,6 +11,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import * as z from "zod";
 
+import { isGoogleAuthEnabled } from "@/config/edition";
 import { cn } from "@/lib/utils";
 import { loginSchema, registerSchema } from "@/lib/validations/auth";
 import { buttonVariants } from "@/components/ui/button";
@@ -30,12 +31,18 @@ function clearPendingTemplateCookie() {
 interface UserAuthFormProps extends React.HTMLAttributes<HTMLDivElement> {
   type?: string;
   onSuccess?: () => void;
+  defaultEmail?: string;
+  emailReadOnly?: boolean;
+  inviteToken?: string;
 }
 
 export function UserAuthForm({
   className,
   type,
   onSuccess,
+  defaultEmail,
+  emailReadOnly,
+  inviteToken,
   ...props
 }: UserAuthFormProps) {
   const isRegister = type === "register";
@@ -48,6 +55,9 @@ export function UserAuthForm({
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
+    defaultValues: defaultEmail
+      ? ({ email: defaultEmail } as Partial<FormData>)
+      : undefined,
   });
 
   const [isLoading, setIsLoading] = React.useState(false);
@@ -60,7 +70,10 @@ export function UserAuthForm({
     setIsLoading(true);
 
     if (isRegister) {
-      const result = await register(data as z.infer<typeof registerSchema>);
+      const result = await register({
+        ...(data as z.infer<typeof registerSchema>),
+        inviteToken,
+      });
 
       setIsLoading(false);
 
@@ -70,6 +83,25 @@ export function UserAuthForm({
 
       toast.success(result.success);
       onSuccess?.();
+      if ((result as { autoVerified?: boolean }).autoVerified) {
+        const signedIn = await signIn("credentials", {
+          email: data.email,
+          password: data.password,
+          redirect: false,
+        });
+        if (signedIn?.error) {
+          router.push("/login");
+          return;
+        }
+        const teamId = (result as { teamId?: string }).teamId;
+        router.push(
+          teamId
+            ? `/dashboard/teams/${teamId}`
+            : searchParams?.get("from") || "/dashboard",
+        );
+        router.refresh();
+        return;
+      }
       router.push("/check-email");
     } else {
       const result = await login(data as z.infer<typeof loginSchema>);
@@ -130,7 +162,8 @@ export function UserAuthForm({
               autoCapitalize="none"
               autoComplete="email"
               autoCorrect="off"
-              disabled={isLoading || isGoogleLoading}
+              disabled={isLoading || isGoogleLoading || emailReadOnly}
+              readOnly={emailReadOnly}
               {...formRegister("email")}
             />
             {errors?.email && (
@@ -182,6 +215,8 @@ export function UserAuthForm({
         </div>
       </form>
 
+      {!isGoogleAuthEnabled() || inviteToken ? null : (
+        <>
       <div className="relative">
         <div className="absolute inset-0 flex items-center">
           <span className="w-full border-t" />
@@ -199,7 +234,9 @@ export function UserAuthForm({
         onClick={() => {
           setIsGoogleLoading(true);
           const pendingTemplate = getPendingTemplateCookie();
-          const callbackUrl = pendingTemplate
+          const callbackUrl = inviteToken
+            ? `/invite/${inviteToken}`
+            : pendingTemplate
             ? `/dashboard/templates/use?templateId=${pendingTemplate}`
             : searchParams?.get("from") || "/dashboard";
           if (pendingTemplate) clearPendingTemplateCookie();
@@ -214,6 +251,8 @@ export function UserAuthForm({
         )}{" "}
         Google
       </button>
+        </>
+      )}
     </div>
   );
 }
