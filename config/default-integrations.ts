@@ -235,7 +235,7 @@ Every form submission creates or updates a contact in HubSpot, complete with all
 - Customer intake forms
 - Quote request forms
 - Partnership inquiry tracking`,
-    icon: "🟧",
+    icon: "🔶",
     category: "CRM",
     webhookUrl: "internal://hubspot",
     authConfig: {
