@@ -1,18 +1,17 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { authenticateApiKey } from "@/lib/api-auth";
+import { authorizeApiRequest } from "@/lib/api-auth";
+import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 interface RouteContext {
   params: Promise<{ formId: string }>;
 }
 
-// GET /api/v1/forms/:formId
 export async function GET(req: Request, context: RouteContext) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const { formId } = await context.params;
 
@@ -21,7 +20,7 @@ export async function GET(req: Request, context: RouteContext) {
     include: {
       questions: { orderBy: { order: "asc" } },
       collection: { select: { id: true, name: true } },
-      _count: { select: { responses: true } },
+      _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE } } },
     },
   });
 
@@ -32,12 +31,10 @@ export async function GET(req: Request, context: RouteContext) {
   return NextResponse.json({ form });
 }
 
-// PATCH /api/v1/forms/:formId
 export async function PATCH(req: Request, context: RouteContext) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const { formId } = await context.params;
   const body = await req.json().catch(() => ({}));
@@ -69,7 +66,6 @@ export async function PATCH(req: Request, context: RouteContext) {
     }
   }
 
-  // Validate collection ownership when moving forms
   if (updateData.collectionId) {
     const collection = await prisma.collection.findFirst({
       where: { id: updateData.collectionId, userId: auth.userId },
@@ -94,12 +90,10 @@ export async function PATCH(req: Request, context: RouteContext) {
   return NextResponse.json({ form: updated });
 }
 
-// DELETE /api/v1/forms/:formId
 export async function DELETE(req: Request, context: RouteContext) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const { formId } = await context.params;
 

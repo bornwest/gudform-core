@@ -1,15 +1,16 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { authenticateApiKey } from "@/lib/api-auth";
+import { authorizeApiRequest } from "@/lib/api-auth";
 import { ensureDefaultCollection } from "@/lib/collections";
+import { parseQuestionsPayload, replaceFormQuestions } from "@/lib/form-questions";
+import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 // GET /api/v1/forms — List all forms
 export async function GET(req: Request) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const url = new URL(req.url);
   const collectionId = url.searchParams.get("collectionId") || undefined;
@@ -33,7 +34,7 @@ export async function GET(req: Request) {
       createdAt: true,
       updatedAt: true,
       publishedAt: true,
-      _count: { select: { responses: true, questions: true } },
+      _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE }, questions: true } },
     },
     orderBy: { updatedAt: "desc" },
   });
@@ -43,10 +44,9 @@ export async function GET(req: Request) {
 
 // POST /api/v1/forms — Create a new form
 export async function POST(req: Request) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const body = await req.json().catch(() => ({}));
   const title = body.title || "Untitled Form";
@@ -80,6 +80,16 @@ export async function POST(req: Request) {
       collectionId,
     },
   });
+
+  if (body.questions) {
+    const parsed = parseQuestionsPayload(body.questions);
+    if (!parsed.ok) {
+      await prisma.form.delete({ where: { id: form.id } });
+      return NextResponse.json({ error: parsed.error }, { status: 400 });
+    }
+    const questions = await replaceFormQuestions(form.id, parsed.questions);
+    return NextResponse.json({ form: { ...form, questions } }, { status: 201 });
+  }
 
   return NextResponse.json({ form }, { status: 201 });
 }
