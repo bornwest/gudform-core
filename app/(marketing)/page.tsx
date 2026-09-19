@@ -17,6 +17,7 @@ import {
   Webhook,
 } from "lucide-react";
 
+import { isOssEdition } from "@/config/edition";
 import { siteConfig } from "@/config/site";
 import { cn, constructMetadata } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
@@ -30,6 +31,12 @@ import MaxWidthWrapper from "@/components/shared/max-width-wrapper";
 // ---------------------------------------------------------------------------
 
 const features = [
+  {
+    icon: BotMessageSquare,
+    title: "MCP for agents",
+    description:
+      "List, create, and fill forms from Cursor, Claude, or any MCP client",
+  },
   {
     icon: MessageSquare,
     title: "Conversational UX",
@@ -269,19 +276,35 @@ export default async function IndexPage({
                   Get Started Free
                   <ArrowRight className="ml-2 size-4" />
                 </Link>
-                <Link
-                  href="/pricing"
-                  className={cn(
-                    buttonVariants({
-                      size: "lg",
-                      variant: "outline",
-                      rounded: "full",
-                    }),
-                    "px-8",
-                  )}
-                >
-                  Compare Plans
-                </Link>
+                {isOssEdition() ? (
+                  <Link
+                    href="/docs/self-hosting"
+                    className={cn(
+                      buttonVariants({
+                        size: "lg",
+                        variant: "outline",
+                        rounded: "full",
+                      }),
+                      "px-8",
+                    )}
+                  >
+                    Self-hosting docs
+                  </Link>
+                ) : (
+                  <Link
+                    href="/pricing"
+                    className={cn(
+                      buttonVariants({
+                        size: "lg",
+                        variant: "outline",
+                        rounded: "full",
+                      }),
+                      "px-8",
+                    )}
+                  >
+                    Compare Plans
+                  </Link>
+                )}
               </div>
 
               <div className="mt-16 w-full max-w-3xl animate-fade-up [animation-delay:400ms]">
@@ -317,22 +340,18 @@ export default async function IndexPage({
               </div>
 
               {/* Headline — max-width on xl+ so text wraps to 3 lines */}
-              <h1 className="mx-auto max-w-full animate-fade-up text-balance font-heading text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl lg:text-7xl xl:max-w-3xl">
-                Forms for humans{" "}
+              <h1 className="mx-auto max-w-full animate-fade-up text-balance font-heading text-4xl font-bold tracking-tight sm:text-5xl md:max-w-3xl md:text-6xl lg:text-7xl">
+                Open-source form infrastructure <br /> {" "} 
                 <span className="relative whitespace-nowrap">
                   <span className="text-gradient_green-teal">
-                    and AI agents
+                    for humans and AI Agents
                   </span>
                 </span>
-                , <br className="hidden sm:inline" />
-                working together
               </h1>
 
               {/* Subheadline */}
               <p className="mt-6 max-w-2xl animate-fade-up text-balance text-lg text-muted-foreground [animation-delay:100ms] md:text-xl">
-                Forms were designed before agents existed. GudForm is what
-                they'd look like if you built them today. Conversational for
-                humans. MCP, REST API, and webhooks for AI.
+                GudForm is open‑source, AI‑native form infrastructure for the agentic era, combining conversational UX for people with first‑class MCP, REST API, and webhook access for your agents and automations
               </p>
 
               {/* CTAs */}
@@ -348,7 +367,9 @@ export default async function IndexPage({
                   <ArrowRight className="ml-2 size-4" />
                 </Link>
                 <Link
-                  href="/docs/api"
+                  href={siteConfig.links.github}
+                  target="_blank"
+                  rel="noreferrer"
                   className={cn(
                     buttonVariants({
                       size: "lg",
@@ -358,7 +379,7 @@ export default async function IndexPage({
                     "px-8",
                   )}
                 >
-                  Read the Docs
+                  View on GitHub
                 </Link>
               </div>
 
@@ -391,20 +412,35 @@ export default async function IndexPage({
             </div>
 
             <div className="mt-12 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {agentCapabilities.map((cap) => (
-                <div
-                  key={cap.label}
-                  className="rounded-xl border bg-background p-6 shadow-sm"
-                >
-                  <div className="mb-3 inline-flex rounded-lg bg-gradient-to-br from-green-500/10 to-teal-500/10 p-3">
-                    <cap.icon className="size-5 text-green-600 dark:text-green-400" />
+              {agentCapabilities.map((cap) => {
+                const card = (
+                  <>
+                    <div className="mb-3 inline-flex rounded-lg bg-gradient-to-br from-green-500/10 to-teal-500/10 p-3">
+                      <cap.icon className="size-5 text-green-600 dark:text-green-400" />
+                    </div>
+                    <h3 className="font-semibold">{cap.label}</h3>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {cap.description}
+                    </p>
+                  </>
+                );
+                return cap.label === "MCP Server" ? (
+                  <Link
+                    key={cap.label}
+                    href="/docs/mcp"
+                    className="rounded-xl border bg-background p-6 shadow-sm transition-colors hover:border-green-500/40"
+                  >
+                    {card}
+                  </Link>
+                ) : (
+                  <div
+                    key={cap.label}
+                    className="rounded-xl border bg-background p-6 shadow-sm"
+                  >
+                    {card}
                   </div>
-                  <h3 className="font-semibold">{cap.label}</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {cap.description}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
             {/* Human + Agent collaboration callout */}
@@ -500,7 +536,9 @@ export default async function IndexPage({
                 </div>
                 <h3 className="text-lg font-semibold">{feature.title}</h3>
                 <p className="mt-2 text-sm text-muted-foreground">
-                  {feature.description}
+                  {isOssEdition() && feature.title === "Integrations & embed"
+                    ? "Webhooks, API, and embed. Connect your stack"
+                    : feature.description}
                 </p>
               </div>
             ))}
@@ -632,7 +670,10 @@ export default async function IndexPage({
                     <li key={point} className="flex items-start gap-2.5">
                       <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-green-600 dark:text-green-400" />
                       <span className="text-sm text-muted-foreground">
-                        {point}
+                        {isOssEdition() &&
+                        point === "Payments and integrations when needed"
+                          ? "API, webhooks, and team access"
+                          : point}
                       </span>
                     </li>
                   ))}
@@ -641,21 +682,23 @@ export default async function IndexPage({
             ))}
           </div>
 
-          <div className="mt-10 flex justify-center">
-            <Link
-              href="/pricing"
-              className={cn(
-                buttonVariants({
-                  variant: "outline",
-                  rounded: "full",
-                  size: "lg",
-                }),
-                "px-8",
-              )}
-            >
-              See Plan Comparison
-            </Link>
-          </div>
+          {!isOssEdition() && (
+            <div className="mt-10 flex justify-center">
+              <Link
+                href="/pricing"
+                className={cn(
+                  buttonVariants({
+                    variant: "outline",
+                    rounded: "full",
+                    size: "lg",
+                  }),
+                  "px-8",
+                )}
+              >
+                See Plan Comparison
+              </Link>
+            </div>
+          )}
         </MaxWidthWrapper>
       </section>
 
