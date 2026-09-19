@@ -1,22 +1,26 @@
+import { readFile } from "node:fs/promises"
+import { fileURLToPath } from "node:url"
+
 import { ImageResponse } from "@vercel/og"
 
 import { ogImageSchema } from "@/lib/validations/og"
 
 export const runtime = "nodejs"
 
-const interRegular = fetch(
-  new URL("../../../assets/fonts/Inter-Regular.ttf", import.meta.url)
-).then((res) => res.arrayBuffer())
-
-const interBold = fetch(
-  new URL("../../../assets/fonts/CalSans-SemiBold.ttf", import.meta.url)
-).then((res) => res.arrayBuffer())
-
-
 export async function GET(req: Request) {
   try {
-    const fontRegular = await interRegular
-    const fontBold = await interBold
+    const [fontRegular, fontBold] = await Promise.all([
+      readFile(
+        fileURLToPath(
+          new URL("../../../assets/fonts/Inter-Regular.ttf", import.meta.url),
+        ),
+      ),
+      readFile(
+        fileURLToPath(
+          new URL("../../../assets/fonts/CalSans-SemiBold.ttf", import.meta.url),
+        ),
+      ),
+    ])
 
     const url = new URL(req.url)
     const values = ogImageSchema.parse(Object.fromEntries(url.searchParams))

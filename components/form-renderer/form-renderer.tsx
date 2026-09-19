@@ -11,14 +11,18 @@ import {
 } from "react";
 import {
   createPendingResponse,
+  loadFormDraft,
+  saveFormDraft,
   submitFormResponse,
 } from "@/actions/form-actions";
+import { getTurnstileToken } from "@/components/form-renderer/turnstile-token";
 import { QuestionType } from "@prisma/client";
 import {
   ArrowDown,
   ArrowUp,
   Check,
   ChevronDown,
+  GripVertical,
   Star,
   Upload,
 } from "lucide-react";
@@ -28,9 +32,35 @@ import type { LogicRule } from "@/lib/types/logic";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
 import { isPaymentOptionsForm, isLegacyPaymentForm } from "@/lib/types/payment";
 import { cn, contrastColor } from "@/lib/utils";
-import { validatePhone, validateEmail } from "@/lib/validations/form";
+import { FormattedText } from "@/components/form-renderer/formatted-text";
 import { FormThemeWrapper } from "@/components/form-renderer/form-theme-wrapper";
 import { PaymentSelector } from "@/components/form-renderer/payment-selector";
+import {
+  formatOtherAnswer,
+  getSelectionHint,
+  isOtherAnswer,
+  joinChoiceAnswer,
+  parseChoiceAnswer,
+  parseOtherAnswer,
+  validateChoiceSelections,
+  validateRankingAnswer,
+} from "@/lib/choice-answers";
+import { embedResizeMessage } from "@/lib/embed-protocol";
+import {
+  resolveLogicDestination,
+  thankYouIndex,
+} from "@/lib/form-logic";
+import { ClassicFormRenderer } from "@/components/form-renderer/classic-form-renderer";
+import {
+  getScreenFormat,
+  screenDescriptionClassName,
+  screenTitleClassName,
+} from "@/lib/screen-format";
+import {
+  validateEmail,
+  validatePhone,
+  validateWebsite,
+} from "@/lib/validations/form";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -56,6 +86,7 @@ interface FormData {
   backgroundColor: string;
   themeMode: "LIGHT" | "DARK" | "SYSTEM";
   showProgressBar: boolean;
+  displayMode?: string;
   redirectUrl: string | null;
   questions: Question[];
   paymentEnabled: boolean;
@@ -70,6 +101,7 @@ interface FormData {
 interface FormRendererProps {
   form: FormData;
   isPreview?: boolean;
+  isEmbed?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -102,66 +134,6 @@ function getQuestionOptions(question: Question): string[] {
   }
 
   return [];
-}
-
-// ---------------------------------------------------------------------------
-// Logic evaluation engine
-// ---------------------------------------------------------------------------
-
-function matchesRule(rule: LogicRule, answer: string): boolean {
-  const trimmed = answer.trim();
-
-  switch (rule.operator) {
-    case "always":
-      return true;
-    case "is_answered":
-      return trimmed.length > 0;
-    case "is_not_answered":
-      return trimmed.length === 0;
-    case "equals":
-      return trimmed.toLowerCase() === (rule.value || "").toLowerCase();
-    case "does_not_equal":
-      return trimmed.toLowerCase() !== (rule.value || "").toLowerCase();
-    case "greater_than": {
-      const n = parseFloat(trimmed);
-      const v = parseFloat(rule.value || "");
-      return !isNaN(n) && !isNaN(v) && n > v;
-    }
-    case "less_than": {
-      const n = parseFloat(trimmed);
-      const v = parseFloat(rule.value || "");
-      return !isNaN(n) && !isNaN(v) && n < v;
-    }
-    case "contains":
-      return trimmed.toLowerCase().includes((rule.value || "").toLowerCase());
-    case "does_not_contain":
-      return !trimmed.toLowerCase().includes((rule.value || "").toLowerCase());
-    default:
-      return false;
-  }
-}
-
-/**
- * Evaluate logic rules for a question and return the resolved next index.
- * Returns `"end"` for end-form action, a target index for jump_to, or `null`
- * if no rule matched (fall through to sequential navigation).
- */
-function evaluateLogicRules(
-  rules: LogicRule[],
-  answer: string,
-  questions: Question[],
-): number | "end" | null {
-  for (const rule of rules) {
-    if (matchesRule(rule, answer)) {
-      const action = rule.action;
-      if (action.type === "end_form") return "end";
-      const targetIndex = questions.findIndex(
-        (q) => q.id === action.questionId,
-      );
-      return targetIndex >= 0 ? targetIndex : null;
-    }
-  }
-  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,6 +191,47 @@ const useC = () => useContext(FormColorsCtx);
 // Question Components
 // ---------------------------------------------------------------------------
 
+function ScreenCopy({
+  question,
+  heading = "h1",
+}: {
+  question: Question;
+  heading?: "h1" | "h2";
+}) {
+  const c = useC();
+  const format = getScreenFormat(question.type, question.properties);
+  return (
+    <>
+      <FormattedText
+        as={heading}
+        text={question.title}
+        className={cn(
+          screenTitleClassName(format),
+          !format.titleColor && c.text,
+          "leading-tight tracking-tight",
+        )}
+        style={format.titleColor ? { color: format.titleColor } : undefined}
+      />
+      {question.description && (
+        <FormattedText
+          as="div"
+          text={question.description}
+          className={cn(
+            "mt-6 max-w-2xl leading-relaxed",
+            screenDescriptionClassName(format),
+            !format.descriptionColor && c.textMuted,
+          )}
+          style={
+            format.descriptionColor
+              ? { color: format.descriptionColor }
+              : undefined
+          }
+        />
+      )}
+    </>
+  );
+}
+
 function WelcomeScreen({
   question,
   themeColor,
@@ -229,36 +242,34 @@ function WelcomeScreen({
   onNext: () => void;
 }) {
   const c = useC();
+  const format = getScreenFormat(question.type, question.properties);
+  const buttonText =
+    (question.properties?.buttonText as string | undefined)?.trim() || "Start";
   return (
-    <div className="flex flex-col items-center justify-center text-center">
-      <h1
-        className={cn(
-          "text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl",
-          c.text,
-        )}
-      >
-        {question.title}
-      </h1>
-      {question.description && (
-        <p className={cn("mt-4 max-w-lg text-lg sm:text-xl", c.textMuted)}>
-          {question.description}
-        </p>
+    <div
+      className={cn(
+        "flex flex-col",
+        format.align === "center"
+          ? "items-center justify-center text-center"
+          : "items-start text-left",
       )}
+    >
+      <ScreenCopy question={question} />
       <button
         onClick={onNext}
-        className="mt-10 inline-flex h-12 items-center justify-center rounded-lg px-8 text-base font-semibold transition-all hover:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:brightness-75"
+        className="mt-12 inline-flex h-14 items-center justify-center rounded-xl px-10 text-base font-semibold shadow-sm transition-all hover:shadow-md hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-4 active:scale-[0.98]"
         style={{
           backgroundColor: themeColor,
           color: contrastColor(themeColor),
         }}
       >
-        Start
+        {buttonText}
       </button>
-      <p className={cn("mt-4 text-xs", c.textMuted)}>
+      <p className={cn("mt-5 text-xs", c.textMuted)}>
         press{" "}
         <kbd
           className={cn(
-            "rounded border px-1.5 py-0.5 font-mono text-[10px]",
+            "rounded-md border px-2 py-1 font-mono text-[10px] font-medium shadow-sm",
             c.kbdBorder,
             c.kbdBg,
           )}
@@ -299,29 +310,29 @@ function ThankYouScreen({
     }
   }, [redirectUrl]);
 
+  const format = getScreenFormat(question.type, question.properties);
+
   return (
-    <div className="flex flex-col items-center justify-center text-center">
+    <div
+      className={cn(
+        "flex flex-col",
+        format.align === "center"
+          ? "items-center justify-center text-center"
+          : "items-start text-left",
+      )}
+    >
       <div
-        className="mb-6 flex size-16 items-center justify-center rounded-full"
+        className="mb-8 flex size-20 items-center justify-center rounded-full shadow-lg"
         style={{ backgroundColor: themeColor }}
       >
         <Check
-          className="size-8"
+          className="size-10"
           style={{ color: contrastColor(themeColor) }}
         />
       </div>
-      <h1
-        className={cn("text-4xl font-bold tracking-tight sm:text-5xl", c.text)}
-      >
-        {question.title}
-      </h1>
-      {question.description && (
-        <p className={cn("mt-4 max-w-lg text-lg sm:text-xl", c.textMuted)}>
-          {question.description}
-        </p>
-      )}
+      <ScreenCopy question={question} />
       {redirectUrl && (
-        <p className={cn("mt-6 text-sm", c.textMuted)}>
+        <p className={cn("mt-8 text-base", c.textMuted)}>
           Redirecting you shortly...
         </p>
       )}
@@ -331,7 +342,7 @@ function ThankYouScreen({
           target="_blank"
           rel="noopener noreferrer"
           className={cn(
-            "mt-8 text-sm transition-opacity hover:opacity-80",
+            "mt-10 text-sm transition-opacity hover:opacity-80",
             c.textMuted,
           )}
         >
@@ -352,36 +363,35 @@ function StatementScreen({
   onNext: () => void;
 }) {
   const c = useC();
+  const format = getScreenFormat(question.type, question.properties);
+  const buttonText =
+    (question.properties?.buttonText as string | undefined)?.trim() ||
+    "Continue";
   return (
-    <div className="flex flex-col items-start">
-      <h2
-        className={cn(
-          "text-2xl font-bold tracking-tight sm:text-3xl md:text-4xl",
-          c.text,
-        )}
-      >
-        {question.title}
-      </h2>
-      {question.description && (
-        <p className={cn("mt-3 max-w-lg text-base sm:text-lg", c.textMuted)}>
-          {question.description}
-        </p>
+    <div
+      className={cn(
+        "flex flex-col",
+        format.align === "center"
+          ? "items-center text-center"
+          : "items-start text-left",
       )}
+    >
+      <ScreenCopy question={question} heading="h2" />
       <button
         onClick={onNext}
-        className="mt-8 inline-flex h-11 items-center justify-center rounded-lg px-6 font-semibold transition-all hover:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:brightness-75"
+        className="mt-10 inline-flex h-12 items-center justify-center rounded-xl px-8 font-semibold shadow-sm transition-all hover:shadow-md hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-4 active:scale-[0.98]"
         style={{
           backgroundColor: themeColor,
           color: contrastColor(themeColor),
         }}
       >
-        Continue
+        {buttonText}
       </button>
-      <p className={cn("mt-3 text-xs", c.textMuted)}>
+      <p className={cn("mt-4 text-xs", c.textMuted)}>
         press{" "}
         <kbd
           className={cn(
-            "rounded border px-1.5 py-0.5 font-mono text-[10px]",
+            "rounded-md border px-2 py-1 font-mono text-[10px] font-medium shadow-sm",
             c.kbdBorder,
             c.kbdBg,
           )}
@@ -404,20 +414,26 @@ function ShortTextInput({
 }) {
   const c = useC();
   const placeholder =
-    (question.properties?.placeholder as string) || "Type your answer here...";
+    (question.properties?.placeholder as string) ||
+    (question.properties?.format === "url"
+      ? "https://"
+      : "Type your answer here...");
+  const inputType = question.properties?.format === "url" ? "url" : "text";
   return (
     <input
-      type="text"
+      type={inputType}
       autoFocus
       value={value}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
+      inputMode={inputType === "url" ? "url" : undefined}
       className={cn(
-        "w-full border-0 border-b-2 bg-transparent pb-2 text-2xl font-medium outline-none transition-colors sm:text-3xl",
+        "w-full border-0 border-b-2 bg-transparent pb-3 text-2xl font-medium outline-none transition-all duration-200 sm:text-3xl",
         c.text,
         c.border,
         c.borderFocus,
         c.placeholder,
+        "focus:border-b-[3px]",
       )}
     />
   );
@@ -491,11 +507,45 @@ function MultipleChoiceInput({
   const c = useC();
   const options = getQuestionOptions(question);
   const allowMultiple = question.properties?.allowMultiple === true;
+  const allowOther = question.properties?.allowOther === true;
+  const pictureChoice = question.properties?.pictureChoice === true;
+  const choiceImages: (string | null | undefined)[] = Array.isArray(
+    question.properties?.choiceImages,
+  )
+    ? question.properties.choiceImages
+    : [];
+  const minSelections =
+    typeof question.properties?.minSelections === "number"
+      ? question.properties.minSelections
+      : undefined;
+  const maxSelections =
+    typeof question.properties?.maxSelections === "number"
+      ? question.properties.maxSelections
+      : undefined;
 
   const selectedValues = useMemo(() => {
-    if (!value) return new Set<string>();
-    return new Set(value.split("|||"));
+    return new Set(parseChoiceAnswer(value));
   }, [value]);
+
+  const otherSelected = Array.from(selectedValues).some(isOtherAnswer);
+  const otherText = parseOtherAnswer(
+    Array.from(selectedValues).find(isOtherAnswer) || "",
+  );
+  const [otherDraft, setOtherDraft] = useState(otherText);
+
+  const applyOther = useCallback(
+    (text: string) => {
+      const formatted = formatOtherAnswer(text);
+      if (allowMultiple) {
+        const next = Array.from(selectedValues).filter((item) => !isOtherAnswer(item));
+        next.push(formatted);
+        onChange(joinChoiceAnswer(next));
+      } else {
+        onChange(formatted);
+      }
+    },
+    [allowMultiple, onChange, selectedValues],
+  );
 
   const handleSelect = useCallback(
     (option: string) => {
@@ -504,14 +554,20 @@ function MultipleChoiceInput({
         if (next.has(option)) {
           next.delete(option);
         } else {
+          if (maxSelections != null && next.size >= maxSelections) {
+            toast.error(
+              `Select at most ${maxSelections} option${maxSelections === 1 ? "" : "s"}`,
+            );
+            return;
+          }
           next.add(option);
         }
-        onChange(Array.from(next).join("|||"));
+        onChange(joinChoiceAnswer(Array.from(next)));
       } else {
         onChange(option);
       }
     },
-    [allowMultiple, selectedValues, onChange],
+    [allowMultiple, selectedValues, onChange, maxSelections],
   );
 
   useEffect(() => {
@@ -534,29 +590,42 @@ function MultipleChoiceInput({
     <div className="flex flex-col gap-3">
       {options.map((option, idx) => {
         const isSelected = selectedValues.has(option);
+        const image = choiceImages[idx];
         return (
           <button
             key={idx}
             onClick={() => handleSelect(option)}
             className={cn(
-              "flex items-center gap-3 rounded-lg border-2 px-4 py-3 text-left text-base font-medium transition-all hover:shadow-sm sm:text-lg",
+              "group flex items-center gap-3.5 rounded-xl border-2 px-5 py-4 text-left text-base font-medium transition-all sm:text-lg",
               c.text,
-              isSelected ? "shadow-sm" : cn(c.border, c.borderHover),
+              isSelected 
+                ? "shadow-md" 
+                : cn(c.border, c.borderHover, "hover:shadow-sm"),
             )}
             style={
               isSelected
                 ? {
                     borderColor: themeColor,
-                    backgroundColor: `${themeColor}10`,
+                    backgroundColor: `${themeColor}08`,
                   }
                 : undefined
             }
           >
+            {pictureChoice && image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={image}
+                alt=""
+                className="size-16 shrink-0 rounded-lg object-cover shadow-sm"
+              />
+            ) : null}
             <span
               className={cn(
-                "flex size-7 shrink-0 items-center justify-center rounded text-sm font-bold transition-colors",
+                "flex size-8 shrink-0 items-center justify-center text-sm font-bold transition-all",
+                allowMultiple ? "rounded-lg" : "rounded-full",
                 !isSelected &&
-                  cn("border", c.badgeBorder, c.badgeBg, c.badgeText),
+                  cn("border-2 shadow-sm", c.badgeBorder, c.badgeBg, c.badgeText, "group-hover:border/60"),
+                isSelected && "shadow-md",
               )}
               style={
                 isSelected
@@ -567,10 +636,16 @@ function MultipleChoiceInput({
                   : undefined
               }
             >
-              {LETTERS[idx]}
+              {allowMultiple ? (
+                isSelected ? (
+                  <Check className="size-4.5" />
+                ) : null
+              ) : (
+                LETTERS[idx]
+              )}
             </span>
-            <span className="flex-1">{option}</span>
-            {isSelected && (
+            <span className="flex-1 leading-snug">{option}</span>
+            {isSelected && !allowMultiple && (
               <Check
                 className="size-5 shrink-0"
                 style={{ color: themeColor }}
@@ -579,11 +654,167 @@ function MultipleChoiceInput({
           </button>
         );
       })}
+      {allowOther && (
+        <div className="flex flex-col gap-3">
+          <button
+            onClick={() => {
+              if (otherSelected && !allowMultiple) {
+                onChange("");
+                return;
+              }
+              applyOther(otherDraft);
+            }}
+            className={cn(
+              "group flex items-center gap-3.5 rounded-xl border-2 px-5 py-4 text-left text-base font-medium transition-all sm:text-lg",
+              c.text,
+              otherSelected ? "shadow-md" : cn(c.border, c.borderHover, "hover:shadow-sm"),
+            )}
+            style={
+              otherSelected
+                ? {
+                    borderColor: themeColor,
+                    backgroundColor: `${themeColor}08`,
+                  }
+                : undefined
+            }
+          >
+            <span
+              className={cn(
+                "flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-bold transition-all",
+                !otherSelected &&
+                  cn("border-2 shadow-sm", c.badgeBorder, c.badgeBg, c.badgeText, "group-hover:border/60"),
+                otherSelected && "shadow-md",
+              )}
+              style={
+                otherSelected
+                  ? {
+                      backgroundColor: themeColor,
+                      color: contrastColor(themeColor),
+                    }
+                  : undefined
+              }
+            >
+              {LETTERS[options.length] || "+"}
+            </span>
+            <span className="flex-1 leading-snug">Other</span>
+          </button>
+          {otherSelected && (
+            <input
+              value={otherDraft}
+              onChange={(e) => {
+                setOtherDraft(e.target.value);
+                applyOther(e.target.value);
+              }}
+              placeholder="Type your answer"
+              className={cn(
+                "ml-11 w-full max-w-md border-b-2 bg-transparent py-3 text-base outline-none transition-all duration-200 focus:border-b-[3px]",
+                c.text,
+                c.placeholder,
+              )}
+              style={{ borderColor: themeColor }}
+            />
+          )}
+        </div>
+      )}
       {allowMultiple && (
-        <p className={cn("mt-1 text-xs", c.textMuted)}>
-          Choose as many as you like
+        <p className={cn("mt-3 text-sm", c.textMuted)}>
+          {getSelectionHint({ minSelections, maxSelections })}
         </p>
       )}
+    </div>
+  );
+}
+
+function RankingInput({
+  question,
+  value,
+  onChange,
+  themeColor,
+}: {
+  question: Question;
+  value: string;
+  onChange: (v: string) => void;
+  themeColor: string;
+}) {
+  const c = useC();
+  const options = getQuestionOptions(question);
+  const ordered = useMemo(() => {
+    const parsed = parseChoiceAnswer(value);
+    if (
+      parsed.length === options.length &&
+      options.every((option) => parsed.includes(option))
+    ) {
+      return parsed;
+    }
+    return options;
+  }, [value, options]);
+
+  useEffect(() => {
+    if (!value && options.length > 0) {
+      onChange(joinChoiceAnswer(options));
+    }
+  }, [options, onChange, value]);
+
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= ordered.length) return;
+    const next = [...ordered];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    onChange(joinChoiceAnswer(next));
+  };
+
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {ordered.map((option, idx) => (
+        <div
+          key={`${option}-${idx}`}
+          draggable
+          onDragStart={() => setDragIndex(idx)}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={() => {
+            if (dragIndex != null) move(dragIndex, idx);
+            setDragIndex(null);
+          }}
+          className={cn(
+            "flex cursor-grab items-center gap-3 rounded-lg border-2 px-4 py-3 text-left text-base font-medium active:cursor-grabbing",
+            c.text,
+            c.border,
+          )}
+        >
+          <GripVertical className="size-4 shrink-0 opacity-50" />
+          <span
+            className="flex size-7 shrink-0 items-center justify-center rounded text-sm font-bold"
+            style={{
+              backgroundColor: themeColor,
+              color: contrastColor(themeColor),
+            }}
+          >
+            {idx + 1}
+          </span>
+          <span className="flex-1">{option}</span>
+          <button
+            type="button"
+            aria-label="Move up"
+            onClick={() => move(idx, idx - 1)}
+            className={cn("rounded p-1", c.surfaceHover)}
+          >
+            <ArrowUp className="size-4" />
+          </button>
+          <button
+            type="button"
+            aria-label="Move down"
+            onClick={() => move(idx, idx + 1)}
+            className={cn("rounded p-1", c.surfaceHover)}
+          >
+            <ArrowDown className="size-4" />
+          </button>
+        </div>
+      ))}
+      <p className={cn("text-xs", c.textMuted)}>
+        Drag or use the arrows to rank. 1 is highest.
+      </p>
     </div>
   );
 }
@@ -1040,8 +1271,8 @@ function YesNoInput({
             key={option}
             onClick={() => onChange(option)}
             className={cn(
-              "flex h-14 min-w-[120px] items-center justify-center gap-2 rounded-lg border-2 px-8 text-lg font-bold transition-all hover:shadow-sm sm:h-16 sm:min-w-[140px] sm:text-xl",
-              isSelected ? "shadow-sm" : cn(c.border, c.text, c.borderHover),
+              "group flex h-16 min-w-[140px] items-center justify-center gap-3 rounded-xl border-2 px-10 text-lg font-bold transition-all sm:h-[4.5rem] sm:min-w-[160px] sm:text-xl",
+              isSelected ? "scale-[1.02] shadow-lg" : cn(c.border, c.text, c.borderHover, "hover:scale-[1.01] hover:shadow-md"),
             )}
             style={
               isSelected
@@ -1055,7 +1286,7 @@ function YesNoInput({
           >
             <kbd
               className={cn(
-                "rounded border px-1.5 py-0.5 font-mono text-xs",
+                "rounded-lg border px-2 py-1.5 font-mono text-xs font-semibold shadow-sm transition-all",
                 isSelected
                   ? contrastColor(themeColor) === "white"
                     ? "border-white/30 bg-white/20"
@@ -1069,6 +1300,139 @@ function YesNoInput({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+function SignatureInput({
+  question,
+  value,
+  onChange,
+  themeColor,
+  formId,
+}: {
+  question: Question;
+  value: string;
+  onChange: (v: string) => void;
+  themeColor: string;
+  formId: string;
+}) {
+  const c = useC();
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState("");
+
+  const pos = (e: React.MouseEvent | React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
+    const rect = canvas.getBoundingClientRect();
+    if ("touches" in e) {
+      const touch = e.touches[0];
+      return { x: touch.clientX - rect.left, y: touch.clientY - rect.top };
+    }
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  };
+
+  const start = (e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!ctx) return;
+    drawing.current = true;
+    const { x, y } = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!drawing.current) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!ctx) return;
+    const { x, y } = pos(e);
+    ctx.lineTo(x, y);
+    ctx.strokeStyle = contrastColor(themeColor) === "white" ? "#f8fafc" : "#111827";
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.stroke();
+  };
+
+  const end = () => {
+    drawing.current = false;
+  };
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (!canvas || !ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    onChange("");
+  };
+
+  const save = async () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    setUploading(true);
+    setError("");
+    try {
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png"),
+      );
+      if (!blob) throw new Error("Could not save signature");
+      const file = new File([blob], "signature.png", { type: "image/png" });
+      const body = new FormData();
+      body.append("file", file);
+      body.append("formId", formId);
+      const res = await fetch("/api/upload", { method: "POST", body });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload failed");
+      onChange(data.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save signature");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="w-full max-w-md space-y-3">
+      <canvas
+        ref={canvasRef}
+        width={520}
+        height={200}
+        className={cn("w-full rounded-xl border-2", c.border)}
+        style={{ touchAction: "none", backgroundColor: `${themeColor}08` }}
+        onMouseDown={start}
+        onMouseMove={draw}
+        onMouseUp={end}
+        onMouseLeave={end}
+        onTouchStart={start}
+        onTouchMove={draw}
+        onTouchEnd={end}
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={clear}
+          className={cn("rounded-lg border px-3 py-2 text-sm", c.border, c.text)}
+        >
+          Clear
+        </button>
+        <button
+          type="button"
+          onClick={save}
+          disabled={uploading}
+          className="rounded-lg px-3 py-2 text-sm font-medium text-white"
+          style={{ backgroundColor: themeColor }}
+        >
+          {uploading ? "Saving..." : value ? "Update signature" : "Save signature"}
+        </button>
+      </div>
+      {value && (
+        <p className={cn("text-xs", c.textMuted)}>Signature saved</p>
+      )}
+      {error && <p className="text-sm text-red-500">{error}</p>}
     </div>
   );
 }
@@ -1094,13 +1458,29 @@ function FileUploadInput({
   const [error, setError] = useState<string>("");
   const [dragOver, setDragOver] = useState(false);
 
-  const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+  const maxMb =
+    (question.properties?.maxFileSize as number | undefined) ??
+    (question.properties?.maxFileSizeMB as number | undefined) ??
+    10;
+  const MAX_SIZE = maxMb * 1024 * 1024;
+
+  if (question.properties?.capture === "signature") {
+    return (
+      <SignatureInput
+        question={question}
+        value={value}
+        onChange={onChange}
+        themeColor={themeColor}
+        formId={formId}
+      />
+    );
+  }
 
   async function uploadFile(file: File) {
     setError("");
 
     if (file.size > MAX_SIZE) {
-      setError("File size exceeds 10 MB limit.");
+      setError(`File size exceeds ${maxMb} MB limit.`);
       return;
     }
 
@@ -1207,7 +1587,7 @@ function FileUploadInput({
               Choose file or drag and drop
             </p>
             <p className={cn("mt-1 text-sm", c.textMuted)}>
-              Max file size: 10MB
+              Max file size: {maxMb}MB
             </p>
           </div>
         )}
@@ -1263,6 +1643,16 @@ function QuestionView({
           />
         );
       case "MULTIPLE_CHOICE":
+        if (question.properties?.ranking === true) {
+          return (
+            <RankingInput
+              question={question}
+              value={value}
+              onChange={onChange}
+              themeColor={themeColor}
+            />
+          );
+        }
         return (
           <MultipleChoiceInput
             question={question}
@@ -1343,39 +1733,42 @@ function QuestionView({
   };
 
   const showOkButton =
-    question.type !== "MULTIPLE_CHOICE" || question.properties?.allowMultiple;
+    question.type !== "MULTIPLE_CHOICE" ||
+    question.properties?.allowMultiple ||
+    question.properties?.ranking ||
+    question.properties?.allowOther;
 
   return (
     <div className="flex w-full max-w-2xl flex-col items-start">
-      <div className="mb-1 flex items-center gap-2">
-        <span className="text-sm font-medium" style={{ color: themeColor }}>
+      <div className="mb-3 flex items-center gap-2.5">
+        <span className="text-sm font-semibold tabular-nums" style={{ color: themeColor }}>
           {questionNumber}
         </span>
         <span className={cn("text-sm", c.textMuted)}>of {totalQuestions}</span>
         {question.required && (
-          <span className="text-sm font-medium text-red-500">*</span>
+          <span className="ml-1 text-sm font-semibold text-red-500">*</span>
         )}
       </div>
       <h2
         className={cn(
-          "mb-2 text-2xl font-bold tracking-tight sm:text-3xl",
+          "mb-3 text-2xl font-bold leading-tight tracking-tight sm:text-3xl",
           c.text,
         )}
       >
         {question.title}
       </h2>
       {question.description && (
-        <p className={cn("mb-6 text-base sm:text-lg", c.textMuted)}>
+        <p className={cn("mb-8 text-base leading-relaxed sm:text-lg", c.textMuted)}>
           {question.description}
         </p>
       )}
-      {!question.description && <div className="mb-6" />}
+      {!question.description && <div className="mb-8" />}
       <div className="w-full">{renderInput()}</div>
       {showOkButton && (
-        <div className="mt-8 flex items-center gap-3">
+        <div className="mt-10 flex items-center gap-4">
           <button
             onClick={onNext}
-            className="inline-flex h-11 items-center justify-center rounded-lg px-6 font-semibold transition-all hover:brightness-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 active:brightness-75"
+            className="inline-flex h-12 items-center justify-center rounded-xl px-8 font-semibold shadow-sm transition-all hover:shadow-md hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-4 active:scale-[0.98]"
             style={{
               backgroundColor: themeColor,
               color: contrastColor(themeColor),
@@ -1388,7 +1781,7 @@ function QuestionView({
             press{" "}
             <kbd
               className={cn(
-                "rounded border px-1.5 py-0.5 font-mono text-[10px]",
+                "rounded-md border px-2 py-1 font-mono text-[10px] font-medium shadow-sm",
                 c.kbdBorder,
                 c.kbdBg,
               )}
@@ -1406,7 +1799,11 @@ function QuestionView({
 // Main FormRenderer Component
 // ---------------------------------------------------------------------------
 
-export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
+export function FormRenderer({
+  form,
+  isPreview = false,
+  isEmbed = false,
+}: FormRendererProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [navigationHistory, setNavigationHistory] = useState<number[]>([]);
@@ -1423,10 +1820,82 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
     number | null
   >(null);
   const visitedRef = useRef(new Set<number>());
+  const resumeTokenRef = useRef<string | null>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const questions = form.questions;
   const currentQuestion = questions[currentIndex];
   const themeColor = form.themeColor || "#6366f1";
+
+  useEffect(() => {
+    if (isPreview) return;
+    let cancelled = false;
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get("resume");
+    const stored = window.localStorage.getItem(`gudform:draft:${form.id}`);
+    let parsed: { resumeToken?: string; answers?: Record<string, string> } | null =
+      null;
+    try {
+      parsed = stored ? JSON.parse(stored) : null;
+    } catch {
+      parsed = null;
+    }
+    const token = fromUrl || parsed?.resumeToken;
+    if (parsed?.answers) {
+      setAnswers(parsed.answers);
+    }
+    if (!token) return;
+    loadFormDraft(form.id, token)
+      .then((draft) => {
+        if (cancelled || !draft) return;
+        resumeTokenRef.current = draft.resumeToken;
+        setAnswers(draft.answers);
+        window.localStorage.setItem(
+          `gudform:draft:${form.id}`,
+          JSON.stringify({ resumeToken: draft.resumeToken, answers: draft.answers }),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [form.id, isPreview]);
+
+  useEffect(() => {
+    if (!isEmbed) return;
+    const html = document.documentElement;
+    const body = document.body;
+    html.style.minHeight = "0";
+    body.style.minHeight = "0";
+    html.style.height = "auto";
+    body.style.height = "auto";
+    return () => {
+      html.style.minHeight = "";
+      body.style.minHeight = "";
+      html.style.height = "";
+      body.style.height = "";
+    };
+  }, [isEmbed]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || window.parent === window) return;
+    const send = () => {
+      const height = Math.max(
+        document.documentElement.scrollHeight,
+        document.body.scrollHeight,
+        320,
+      );
+      window.parent.postMessage(embedResizeMessage(height), "*");
+    };
+    send();
+    const observer = new ResizeObserver(send);
+    observer.observe(document.documentElement);
+    window.addEventListener("resize", send);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", send);
+    };
+  }, [currentIndex, visible, submitting, showPaymentSelector]);
 
   // Count answerable questions for progress and numbering
   const answerableQuestions = useMemo(
@@ -1526,6 +1995,33 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
       }
     }
 
+    if (
+      type === "SHORT_TEXT" &&
+      currentQuestion.properties?.format === "url" &&
+      answer.trim() &&
+      !validateWebsite(answer)
+    ) {
+      toast.error("Please enter a valid website URL");
+      return false;
+    }
+
+    if (type === "MULTIPLE_CHOICE" && answer.trim()) {
+      const choices = getQuestionOptions(currentQuestion);
+      const result = currentQuestion.properties?.ranking
+        ? validateRankingAnswer(answer, choices)
+        : validateChoiceSelections(answer, {
+            choices,
+            allowMultiple: currentQuestion.properties?.allowMultiple === true,
+            minSelections: currentQuestion.properties?.minSelections,
+            maxSelections: currentQuestion.properties?.maxSelections,
+            allowOther: currentQuestion.properties?.allowOther === true,
+          });
+      if (!result.valid) {
+        toast.error(result.error || "Please choose a valid option");
+        return false;
+      }
+    }
+
     return true;
   }, [currentQuestion, answers]);
 
@@ -1543,8 +2039,8 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
         setVisible(true);
         setTimeout(() => {
           setTransitioning(false);
-        }, 400);
-      }, 300);
+        }, 500);
+      }, 400);
     },
     [transitioning],
   );
@@ -1555,11 +2051,13 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
       answerPayload: { questionId: string; value: string }[],
       selectedOptionIds?: string[],
     ) => {
+      const turnstileToken = await getTurnstileToken();
       const meta = {
         userAgent:
           typeof navigator !== "undefined" ? navigator.userAgent : undefined,
         referrer:
           typeof document !== "undefined" ? document.referrer : undefined,
+        turnstileToken,
       };
 
       const pendingResponse = await createPendingResponse(
@@ -1595,8 +2093,12 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
       setSubmitting(true);
       try {
         await executePaymentFlow(pendingAnswerPayload, selectedIds);
-      } catch {
-        toast.error("Something went wrong. Please try again.");
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Something went wrong. Please try again.",
+        );
         setSubmitting(false);
       }
     },
@@ -1626,23 +2128,28 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
     try {
       if (isPreview) {
         setSubmitted(true);
+      } else if (isLegacyPaymentForm(form)) {
+        await executePaymentFlow(answerPayload);
       } else {
-        const meta = {
+        const turnstileToken = await getTurnstileToken();
+        await submitFormResponse(form.id, answerPayload, {
           userAgent:
             typeof navigator !== "undefined" ? navigator.userAgent : undefined,
           referrer:
             typeof document !== "undefined" ? document.referrer : undefined,
-        };
-
-        if (isLegacyPaymentForm(form)) {
-          await executePaymentFlow(answerPayload);
-        } else {
-          await submitFormResponse(form.id, answerPayload, meta);
-          setSubmitted(true);
-        }
+          turnstileToken,
+          resumeToken: resumeTokenRef.current || undefined,
+        });
+        window.localStorage.removeItem(`gudform:draft:${form.id}`);
+        resumeTokenRef.current = null;
+        setSubmitted(true);
       }
-    } catch {
-      toast.error("Something went wrong. Please try again.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -1669,69 +2176,76 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
     const currentAnswer = currentQuestion
       ? (answers[currentQuestion.id] ?? "")
       : "";
-    const currentRules = currentQuestion?.logic ?? [];
-    let resolvedNextIndex: number;
+    const dest = currentQuestion
+      ? resolveLogicDestination(
+          currentQuestion,
+          currentAnswer,
+          questions,
+          currentIndex,
+        )
+      : { type: "index" as const, index: currentIndex + 1 };
 
-    if (
-      currentRules.length > 0 &&
-      currentQuestion &&
-      isAnswerableQuestion(currentQuestion.type)
-    ) {
-      const logicResult = evaluateLogicRules(
-        currentRules,
-        currentAnswer,
-        questions,
-      );
+    const thankYouIdx = thankYouIndex(questions);
+    const shouldSubmit =
+      dest.type === "end" ||
+      (dest.type === "index" &&
+        (dest.index >= questions.length ||
+          questions[dest.index]?.type === "THANK_YOU_SCREEN"));
 
-      if (logicResult === "end") {
-        // Jump to end: find the THANK_YOU_SCREEN or use last index
-        const thankYouIndex = questions.findIndex(
-          (q) => q.type === "THANK_YOU_SCREEN",
-        );
-        resolvedNextIndex =
-          thankYouIndex >= 0 ? thankYouIndex : questions.length - 1;
-      } else if (logicResult !== null) {
-        resolvedNextIndex = logicResult;
-      } else {
-        // No logic rule matched — check defaultDestination
-        const defaultDest = currentQuestion.properties?.defaultDestination as
-          | { type: string; questionId?: string }
-          | undefined;
-        if (defaultDest?.type === "end_form") {
-          const thankYouIdx = questions.findIndex(
-            (q) => q.type === "THANK_YOU_SCREEN",
-          );
-          resolvedNextIndex =
-            thankYouIdx >= 0 ? thankYouIdx : questions.length - 1;
-        } else if (defaultDest?.type === "jump_to" && defaultDest.questionId) {
-          const targetIdx = questions.findIndex(
-            (q) => q.id === defaultDest.questionId,
-          );
-          resolvedNextIndex = targetIdx >= 0 ? targetIdx : currentIndex + 1;
+    if (shouldSubmit && !submitted) {
+      const answerPayload = answerableQuestions
+        .filter((q) => answers[q.id] !== undefined && answers[q.id] !== "")
+        .map((q) => ({
+          questionId: q.id,
+          value: answers[q.id],
+        }));
+
+      const nextIndex = thankYouIdx >= 0 ? thankYouIdx : currentIndex;
+
+      if (isPaymentOptionsForm(form)) {
+        setPendingAnswerPayload(answerPayload);
+        setPendingThankYouIndex(thankYouIdx >= 0 ? thankYouIdx : null);
+        setShowPaymentSelector(true);
+        return;
+      }
+
+      setSubmitting(true);
+      try {
+        if (isPreview) {
+          setSubmitted(true);
+          setSubmitting(false);
+          if (thankYouIdx >= 0) transitionTo(nextIndex, "up");
+        } else if (isLegacyPaymentForm(form)) {
+          await executePaymentFlow(answerPayload);
+          return;
         } else {
-          resolvedNextIndex = currentIndex + 1;
+          const turnstileToken = await getTurnstileToken();
+          await submitFormResponse(form.id, answerPayload, {
+            userAgent:
+              typeof navigator !== "undefined" ? navigator.userAgent : undefined,
+            referrer:
+              typeof document !== "undefined" ? document.referrer : undefined,
+            turnstileToken,
+            resumeToken: resumeTokenRef.current || undefined,
+          });
+          window.localStorage.removeItem(`gudform:draft:${form.id}`);
+          resumeTokenRef.current = null;
+          setSubmitted(true);
+          setSubmitting(false);
+          if (thankYouIdx >= 0) transitionTo(nextIndex, "up");
         }
-      }
-    } else {
-      // No logic rules at all — check defaultDestination
-      const defaultDest = currentQuestion?.properties?.defaultDestination as
-        | { type: string; questionId?: string }
-        | undefined;
-      if (defaultDest?.type === "end_form") {
-        const thankYouIdx = questions.findIndex(
-          (q) => q.type === "THANK_YOU_SCREEN",
+      } catch (error) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Something went wrong. Please try again.",
         );
-        resolvedNextIndex =
-          thankYouIdx >= 0 ? thankYouIdx : questions.length - 1;
-      } else if (defaultDest?.type === "jump_to" && defaultDest.questionId) {
-        const targetIdx = questions.findIndex(
-          (q) => q.id === defaultDest.questionId,
-        );
-        resolvedNextIndex = targetIdx >= 0 ? targetIdx : currentIndex + 1;
-      } else {
-        resolvedNextIndex = currentIndex + 1;
+        setSubmitting(false);
       }
+      return;
     }
+
+    let resolvedNextIndex = dest.type === "index" ? dest.index : currentIndex + 1;
 
     // Cycle detection: if we've already visited this index, skip to next sequential
     if (visitedRef.current.has(resolvedNextIndex)) {
@@ -1747,58 +2261,7 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
 
     if (resolvedNextIndex >= questions.length) return;
 
-    // Track visited questions
     visitedRef.current.add(resolvedNextIndex);
-
-    // If the resolved next question is THANK_YOU_SCREEN, submit first
-    const nextQ = questions[resolvedNextIndex];
-    if (nextQ.type === "THANK_YOU_SCREEN" && !submitted) {
-      const answerPayload = answerableQuestions
-        .filter((q) => answers[q.id] !== undefined && answers[q.id] !== "")
-        .map((q) => ({
-          questionId: q.id,
-          value: answers[q.id],
-        }));
-
-      if (isPaymentOptionsForm(form)) {
-        // Show payment selector overlay
-        setPendingAnswerPayload(answerPayload);
-        setPendingThankYouIndex(resolvedNextIndex);
-        setShowPaymentSelector(true);
-        return;
-      }
-
-      setSubmitting(true);
-      try {
-        if (isPreview) {
-          setSubmitted(true);
-          setSubmitting(false);
-          transitionTo(resolvedNextIndex, "up");
-        } else {
-          const meta = {
-            userAgent:
-              typeof navigator !== "undefined" ? navigator.userAgent : undefined,
-            referrer:
-              typeof document !== "undefined" ? document.referrer : undefined,
-          };
-
-          if (isLegacyPaymentForm(form)) {
-            await executePaymentFlow(answerPayload);
-            return;
-          } else {
-            await submitFormResponse(form.id, answerPayload, meta);
-            setSubmitted(true);
-            setSubmitting(false);
-            transitionTo(resolvedNextIndex, "up");
-          }
-        }
-      } catch {
-        toast.error("Something went wrong. Please try again.");
-        setSubmitting(false);
-      }
-      return;
-    }
-
     transitionTo(resolvedNextIndex, "up");
   }, [
     currentIndex,
@@ -1812,7 +2275,6 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
     form,
     isPreview,
     transitionTo,
-    handleSubmit,
     executePaymentFlow,
   ]);
 
@@ -1867,7 +2329,9 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
     if (
       currentQuestion.type === "MULTIPLE_CHOICE" &&
       !currentQuestion.properties?.allowMultiple &&
+      !currentQuestion.properties?.ranking &&
       answer &&
+      !isOtherAnswer(answer) &&
       answer !== prevAnswerRef.current
     ) {
       prevAnswerRef.current = answer;
@@ -1882,9 +2346,36 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
   const updateAnswer = useCallback(
     (value: string) => {
       if (!currentQuestion) return;
-      setAnswers((prev) => ({ ...prev, [currentQuestion.id]: value }));
+      setAnswers((prev) => {
+        const next = { ...prev, [currentQuestion.id]: value };
+        if (!isPreview) {
+          if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+          draftTimerRef.current = setTimeout(() => {
+            const payload = Object.entries(next)
+              .filter(([, answer]) => answer)
+              .map(([questionId, answer]) => ({
+                questionId,
+                value: answer,
+              }));
+            if (payload.length === 0) return;
+            saveFormDraft(form.id, payload, resumeTokenRef.current || undefined)
+              .then((result) => {
+                resumeTokenRef.current = result.resumeToken;
+                window.localStorage.setItem(
+                  `gudform:draft:${form.id}`,
+                  JSON.stringify({
+                    resumeToken: result.resumeToken,
+                    answers: next,
+                  }),
+                );
+              })
+              .catch(() => {});
+          }, 1200);
+        }
+        return next;
+      });
     },
-    [currentQuestion],
+    [currentQuestion, form.id, isPreview],
   );
 
   // Determine what to render
@@ -1965,40 +2456,64 @@ export function FormRenderer({ form, isPreview = false }: FormRendererProps) {
   const bgIsDark = contrastColor(bgColor) === "white";
   const colors = bgIsDark ? DARK_COLORS : LIGHT_COLORS;
 
+  // Use ClassicFormRenderer for classic display mode
+  if (form.displayMode === "classic") {
+    return (
+      <FormColorsCtx.Provider value={colors}>
+        <FormThemeWrapper bgColor={bgColor} fillViewport={!isEmbed}>
+          <ClassicFormRenderer
+            form={form}
+            isPreview={isPreview}
+            isEmbed={isEmbed}
+            colors={colors}
+            bgIsDark={bgIsDark}
+            themeColor={themeColor}
+            bgColor={bgColor}
+          />
+        </FormThemeWrapper>
+      </FormColorsCtx.Provider>
+    );
+  }
+
   return (
     <FormColorsCtx.Provider value={colors}>
-      <FormThemeWrapper bgColor={bgColor}>
+      <FormThemeWrapper bgColor={bgColor} fillViewport={!isEmbed}>
         <div
-          className={cn("relative flex min-h-screen flex-col", colors.text)}
+          className={cn(
+            "relative flex flex-col",
+            isEmbed ? "min-h-0" : "min-h-screen",
+            colors.text,
+          )}
           style={{ backgroundColor: bgColor }}
         >
           {/* Progress bar */}
           {form.showProgressBar && !isWelcomeOrThankYou && (
             <div
-              className="fixed inset-x-0 top-0 z-50 h-1"
-              style={{ backgroundColor: `${themeColor}20` }}
+              className="fixed inset-x-0 top-0 z-50 h-1 shadow-sm"
+              style={{ backgroundColor: `${themeColor}15` }}
             >
               <div
-                className="h-full transition-all duration-500 ease-out"
+                className="h-full transition-all duration-700 ease-out"
                 style={{
                   width: `${progress}%`,
                   backgroundColor: themeColor,
+                  boxShadow: `0 0 8px ${themeColor}40`,
                 }}
               />
             </div>
           )}
 
           {/* Main content area */}
-          <main className="flex flex-1 items-center justify-center px-6 py-16 sm:px-8">
+          <main className="flex flex-1 items-center justify-center px-6 py-20 sm:px-8">
             <div
               className={cn(
-                "w-full max-w-2xl transition-all duration-300 ease-out",
+                "w-full max-w-2xl transition-all duration-500 ease-out",
                 isWelcomeOrThankYou && "flex items-center justify-center",
                 visible
-                  ? "translate-y-0 opacity-100"
+                  ? "translate-y-0 scale-100 opacity-100"
                   : slideDirection === "up"
-                    ? "-translate-y-8 opacity-0"
-                    : "translate-y-8 opacity-0",
+                    ? "-translate-y-6 scale-[0.98] opacity-0"
+                    : "translate-y-6 scale-[0.98] opacity-0",
               )}
             >
               {renderContent()}

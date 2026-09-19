@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { NavItem, SidebarNavItem } from "@/types";
 import { Menu, PanelLeftClose, PanelRightClose } from "lucide-react";
 
+import { isOssEdition } from "@/config/edition";
 import { siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
 import { useMediaQuery } from "@/hooks/use-media-query";
@@ -19,16 +20,38 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import type { SubscriptionPlan } from "@/config/subscriptions";
 
 import ProjectSwitcher from "@/components/dashboard/project-switcher";
+import { UpgradeCard } from "@/components/dashboard/upgrade-card";
 import { Icons } from "@/components/shared/icons";
 
 interface DashboardSidebarProps {
   links: SidebarNavItem[];
+  plan?: SubscriptionPlan;
 }
 
-export function DashboardSidebar({ links }: DashboardSidebarProps) {
+export function DashboardSidebar({ links, plan }: DashboardSidebarProps) {
   const path = usePathname();
+
+  // NOTE: Use this if you want save in local storage -- Credits: Hosna Qasmei
+  //
+  // const [isSidebarExpanded, setIsSidebarExpanded] = useState(() => {
+  //   if (typeof window !== "undefined") {
+  //     const saved = window.localStorage.getItem("sidebarExpanded");
+  //     return saved !== null ? JSON.parse(saved) : true;
+  //   }
+  //   return true;
+  // });
+
+  // useEffect(() => {
+  //   if (typeof window !== "undefined") {
+  //     window.localStorage.setItem(
+  //       "sidebarExpanded",
+  //       JSON.stringify(isSidebarExpanded),
+  //     );
+  //   }
+  // }, [isSidebarExpanded]);
 
   const { isTablet } = useMediaQuery();
   const [isSidebarExpanded, setIsSidebarExpanded] = useState(!isTablet);
@@ -147,6 +170,12 @@ export function DashboardSidebar({ links }: DashboardSidebarProps) {
                   </section>
                 ))}
               </nav>
+
+              <div className="mt-auto xl:p-4">
+                {isSidebarExpanded && !isOssEdition() ? (
+                  <UpgradeCard plan={plan} />
+                ) : null}
+              </div>
             </div>
           </aside>
         </ScrollArea>
@@ -157,6 +186,7 @@ export function DashboardSidebar({ links }: DashboardSidebarProps) {
 
 export function MobileSheetSidebar({
   links,
+  plan,
 }: DashboardSidebarProps) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
@@ -234,6 +264,12 @@ export function MobileSheetSidebar({
                     })}
                   </section>
                 ))}
+
+                {!isOssEdition() && (
+                  <div className="mt-auto">
+                    <UpgradeCard plan={plan} />
+                  </div>
+                )}
               </nav>
             </div>
           </ScrollArea>

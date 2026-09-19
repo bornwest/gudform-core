@@ -34,6 +34,27 @@ export interface CreateFormInput {
   title?: string;
   description?: string;
   collectionId?: string;
+  questions?: QuestionInput[];
+}
+
+export interface QuestionInput {
+  id?: string;
+  type: string;
+  title: string;
+  description?: string;
+  required?: boolean;
+  properties?: Record<string, unknown>;
+}
+
+export interface Question {
+  id: string;
+  formId: string;
+  order: number;
+  type: string;
+  title: string;
+  description: string | null;
+  required: boolean;
+  properties: Record<string, unknown>;
 }
 
 export interface UpdateFormInput {

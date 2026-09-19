@@ -3,12 +3,15 @@ import type {
   CreateCollectionInput,
   CreateFormInput,
   Form,
+  FormResponse,
   GudFormConfig,
   ListCollectionsResponse,
   ListFormsParams,
   ListFormsResponse,
   ListResponsesParams,
   ListResponsesResponse,
+  Question,
+  QuestionInput,
   UpdateCollectionInput,
   UpdateFormInput,
 } from "./types";
@@ -99,6 +102,32 @@ class FormsResource {
 
   async delete(formId: string): Promise<void> {
     return request(this.baseUrl, this.apiKey, "DELETE", `/forms/${formId}`);
+  }
+
+  async setQuestions(
+    formId: string,
+    questions: QuestionInput[],
+  ): Promise<{ questions: Question[] }> {
+    return request(
+      this.baseUrl,
+      this.apiKey,
+      "PUT",
+      `/forms/${formId}/questions`,
+      { questions },
+    );
+  }
+
+  async submit(
+    formId: string,
+    answers: Array<{ questionId: string; value: string }>,
+  ): Promise<{ response: FormResponse }> {
+    return request(
+      this.baseUrl,
+      this.apiKey,
+      "POST",
+      `/forms/${formId}/responses`,
+      { answers },
+    );
   }
 
   async responses(

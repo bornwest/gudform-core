@@ -1,6 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 
+import { isOssEdition } from "@/config/edition";
 import { footerLinks, siteConfig } from "@/config/site";
 import { cn } from "@/lib/utils";
 import { ModeToggle } from "@/components/layout/mode-toggle";
@@ -12,7 +13,19 @@ export function SiteFooter({ className }: React.HTMLAttributes<HTMLElement>) {
   return (
     <footer className={cn("border-t", className)}>
       <div className="container grid max-w-6xl grid-cols-2 gap-6 py-14 sm:grid-cols-3 md:grid-cols-7">
-        {footerLinks.map((section) => (
+        {footerLinks
+          .map((section) => ({
+            ...section,
+            items: section.items?.filter(
+              (link) => !(link.saasOnly && isOssEdition()),
+            ),
+          }))
+          .filter(
+            (section) =>
+              !(section.saasOnly && isOssEdition()) &&
+              (section.items?.length ?? 0) > 0,
+          )
+          .map((section) => (
           <div key={section.title}>
             <span className="text-sm font-medium text-foreground">
               {section.title}
@@ -55,7 +68,7 @@ export function SiteFooter({ className }: React.HTMLAttributes<HTMLElement>) {
           <p className="text-center text-sm text-muted-foreground sm:text-left">
             Open source on{" "}
             <Link
-              href="https://github.com/cavewebs/gudform"
+              href={siteConfig.links.github}
               target="_blank"
               rel="noreferrer"
               className="font-medium underline underline-offset-4"

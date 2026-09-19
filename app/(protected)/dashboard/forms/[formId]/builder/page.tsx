@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { isOssEdition, OSS_PLAN_FEATURES } from "@/config/edition";
+import { PLANS, SubscriptionPlan } from "@/config/subscriptions";
 import {
   CURRENCIES,
   formatPaymentAmount,
@@ -58,17 +60,20 @@ import { Textarea } from "@/components/ui/textarea";
 
 import type { Question, QuestionProperties } from "./components/types";
 import {
-  QUESTION_TYPE_META,
   QUESTION_TYPE_GROUPS,
   SCREEN_TYPES,
   FORM_COMPONENTS,
-  getDefaultProperties,
-  getDefaultTitle,
   getThankYouScreenIndex,
   normalizeQuestionsThankYouLast,
+  createQuestionFromPalette,
+  type PaletteItem,
 } from "./components/constants";
 import { SidebarQuestionItem } from "./components/sidebar-question-item";
 import { QuestionEditor } from "./components/question-editor";
+import {
+  ImportFormDialog,
+  mergeImportedQuestions,
+} from "@/components/forms/import-form-dialog";
 
 // ---------------------------------------------------------------------------
 // Loading skeleton
@@ -158,6 +163,7 @@ export default function FormBuilderPage() {
   );
   const [formThemeColor, setFormThemeColor] = useState("#6366f1");
   const [formBgColor, setFormBgColor] = useState("#ffffff");
+  const [displayMode, setDisplayMode] = useState<"conversational" | "classic">("conversational");
   const [showSettings, setShowSettings] = useState(false);
   const [notifyOnResponse, setNotifyOnResponse] = useState(true);
   const [webhookUrl, setWebhookUrl] = useState("");
@@ -173,7 +179,15 @@ export default function FormBuilderPage() {
   const [paymentSelectionMode, setPaymentSelectionMode] =
     useState<PaymentSelectionMode>("single");
   const [paymentMode, setPaymentMode] = useState<"simple" | "tiers">("simple");
-  // Self-hosted: all features always available
+  const [hasConnectAccount, setHasConnectAccount] = useState(false);
+  const [hasPaidPlan, setHasPaidPlan] = useState(false);
+  const [planId, setPlanId] = useState<SubscriptionPlan>(SubscriptionPlan.FREE);
+  const planFeatures = isOssEdition()
+    ? OSS_PLAN_FEATURES
+    : PLANS[planId].features;
+  const canUseWebhooks = planFeatures.webhooks;
+  const canUseBranding = planFeatures.customBranding;
+  const coreUnlocked = canUseBranding;
   const [removeBranding, setRemoveBranding] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -206,6 +220,7 @@ export default function FormBuilderPage() {
       setFormThemeMode(form.themeMode);
       setFormThemeColor(form.themeColor || "#6366f1");
       setFormBgColor(form.backgroundColor || "#ffffff");
+      setDisplayMode((form.displayMode as "conversational" | "classic") || "conversational");
       setNotifyOnResponse(form.notifyOnResponse);
       setWebhookUrl(form.webhookUrl || "");
       setWebhookSecret(form.webhookSecret || "");
@@ -233,7 +248,17 @@ export default function FormBuilderPage() {
         (form.paymentSelectionMode as PaymentSelectionMode) || "single",
       );
       setPaymentMode(loadedOptions.length > 0 ? "tiers" : "simple");
-      // Self-hosted: all features unlocked
+      setHasConnectAccount(
+        (form as any).user?.stripeConnectAccount?.onboardingCompleted ?? false,
+      );
+      setHasPaidPlan(
+        (form as any).user?.subscription?.plan === "PRO" ||
+          (form as any).user?.subscription?.plan === "BUSINESS",
+      );
+      setPlanId(
+        ((form as any).user?.subscription?.plan as SubscriptionPlan) ||
+          SubscriptionPlan.FREE,
+      );
       setRemoveBranding(form.removeBranding ?? false);
 
       // For published forms with draft changes, load from draftQuestions
@@ -394,7 +419,22 @@ export default function FormBuilderPage() {
     (index: number, updates: Partial<Question>) => {
       setQuestions((prev) => {
         const next = [...prev];
-        next[index] = { ...next[index], ...updates };
+        const current = next[index];
+        
+        // If updating properties, merge them deeply to avoid losing data
+        if (updates.properties !== undefined) {
+          next[index] = {
+            ...current,
+            ...updates,
+            properties: {
+              ...current.properties,
+              ...updates.properties,
+            },
+          };
+        } else {
+          next[index] = { ...current, ...updates };
+        }
+        
         return next;
       });
     },
@@ -402,15 +442,8 @@ export default function FormBuilderPage() {
   );
 
   const addQuestion = useCallback(
-    (type: QuestionType) => {
-      const newQ: Question = {
-        type,
-        title: getDefaultTitle(type),
-        description: undefined,
-        required: false,
-        properties: getDefaultProperties(type),
-        logic: [],
-      };
+    (item: PaletteItem) => {
+      const newQ = createQuestionFromPalette(item);
       const insertAt = getThankYouScreenIndex(questions);
       const insertIndex = insertAt >= 0 ? insertAt : questions.length;
       setQuestions((prev) => {
@@ -685,6 +718,16 @@ export default function FormBuilderPage() {
 
         {/* Right section */}
         <div className="flex items-center gap-2">
+          <ImportFormDialog
+            onImport={(imported, title) => {
+              setQuestions(mergeImportedQuestions(questions, imported));
+              if (title && (!formTitle || formTitle === "Untitled Form")) {
+                setFormTitle(title);
+                updateForm(formId, { title }).catch(() => {});
+              }
+              setSelectedIndex(0);
+            }}
+          />
           <Button
             variant={showSettings ? "default" : "outline"}
             size="sm"
@@ -807,16 +850,15 @@ export default function FormBuilderPage() {
                   <div key={group.label}>
                     {gi > 0 && <DropdownMenuSeparator />}
                     <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-                    {group.types.map((type) => {
-                      const m = QUESTION_TYPE_META[type];
-                      const TypeIcon = m.icon;
+                    {group.items.map((item) => {
+                      const TypeIcon = item.icon;
                       return (
                         <DropdownMenuItem
-                          key={type}
-                          onClick={() => addQuestion(type)}
+                          key={item.id}
+                          onClick={() => addQuestion(item)}
                         >
                           <TypeIcon className="mr-2 size-4 text-muted-foreground" />
-                          {m.label}
+                          {item.label}
                         </DropdownMenuItem>
                       );
                     })}
@@ -906,16 +948,15 @@ export default function FormBuilderPage() {
                       <div key={group.label}>
                         {gi > 0 && <DropdownMenuSeparator />}
                         <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
-                        {group.types.map((type) => {
-                          const m = QUESTION_TYPE_META[type];
-                          const TypeIcon = m.icon;
+                        {group.items.map((item) => {
+                          const TypeIcon = item.icon;
                           return (
                             <DropdownMenuItem
-                              key={type}
-                              onClick={() => addQuestion(type)}
+                              key={item.id}
+                              onClick={() => addQuestion(item)}
                             >
                               <TypeIcon className="mr-2 size-4 text-muted-foreground" />
-                              {m.label}
+                              {item.label}
                             </DropdownMenuItem>
                           );
                         })}
@@ -999,18 +1040,18 @@ export default function FormBuilderPage() {
               </Label>
               <div className="grid grid-cols-3 gap-2">
                 {[
-                  { name: "Indigo", color: "#6366f1", bg: "#ffffff" },
-                  { name: "Ocean", color: "#0ea5e9", bg: "#f0f9ff" },
-                  { name: "Emerald", color: "#10b981", bg: "#ecfdf5" },
-                  { name: "Rose", color: "#f43f5e", bg: "#fff1f2" },
-                  { name: "Amber", color: "#f59e0b", bg: "#fffbeb" },
-                  { name: "Violet", color: "#8b5cf6", bg: "#f5f3ff" },
-                  { name: "Midnight", color: "#6366f1", bg: "#0f172a" },
-                  { name: "Forest", color: "#22c55e", bg: "#14532d" },
-                  { name: "Slate", color: "#64748b", bg: "#f8fafc" },
-                  { name: "Coral", color: "#fb7185", bg: "#1e1b4b" },
-                  { name: "Minimal", color: "#171717", bg: "#ffffff" },
-                  { name: "Sunset", color: "#ea580c", bg: "#fef3c7" },
+                  { name: "Clean", color: "#6366f1", bg: "#ffffff" },
+                  { name: "Ocean", color: "#0891b2", bg: "#f0fdfa" },
+                  { name: "Forest", color: "#059669", bg: "#ecfdf5" },
+                  { name: "Sunset", color: "#ea580c", bg: "#fff7ed" },
+                  { name: "Purple", color: "#9333ea", bg: "#faf5ff" },
+                  { name: "Pink", color: "#ec4899", bg: "#fdf2f8" },
+                  { name: "Night", color: "#3b82f6", bg: "#0f172a" },
+                  { name: "Dark", color: "#10b981", bg: "#111827" },
+                  { name: "Slate", color: "#475569", bg: "#f8fafc" },
+                  { name: "Warm", color: "#dc2626", bg: "#fef2f2" },
+                  { name: "Cool", color: "#0284c7", bg: "#f0f9ff" },
+                  { name: "Bold", color: "#db2777", bg: "#1e293b" },
                 ].map((theme) => {
                   const isActive =
                     formThemeColor === theme.color && formBgColor === theme.bg;
@@ -1116,6 +1157,58 @@ export default function FormBuilderPage() {
 
             <Separator className="my-4" />
 
+            {/* Display Mode */}
+            <div className="space-y-3">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Form Display Mode
+              </Label>
+              <div className="flex gap-2">
+                <button
+                  onClick={async () => {
+                    setDisplayMode("conversational");
+                    try {
+                      await updateForm(formId, { displayMode: "conversational" });
+                      toast.success("Display mode set to Conversational");
+                    } catch {
+                      toast.error("Failed to update display mode");
+                    }
+                  }}
+                  className={`flex-1 rounded-lg border-2 px-3 py-2.5 text-left text-xs font-medium transition-colors ${
+                    displayMode === "conversational"
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-transparent bg-background hover:border-muted-foreground/20"
+                  }`}
+                >
+                  <div className="font-semibold">Conversational</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">One question at a time</div>
+                </button>
+                <button
+                  onClick={async () => {
+                    setDisplayMode("classic");
+                    try {
+                      await updateForm(formId, { displayMode: "classic" });
+                      toast.success("Display mode set to Classic");
+                    } catch {
+                      toast.error("Failed to update display mode");
+                    }
+                  }}
+                  className={`flex-1 rounded-lg border-2 px-3 py-2.5 text-left text-xs font-medium transition-colors ${
+                    displayMode === "classic"
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-transparent bg-background hover:border-muted-foreground/20"
+                  }`}
+                >
+                  <div className="font-semibold">Classic</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">All questions on one page</div>
+                </button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Choose how respondents view and fill out your form.
+              </p>
+            </div>
+
+            <Separator className="my-4" />
+
             {/* Notifications */}
             <div className="space-y-3">
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -1145,6 +1238,20 @@ export default function FormBuilderPage() {
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Webhook
               </Label>
+              {!canUseWebhooks ? (
+                <div className="rounded-lg border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Webhooks require a Starter plan or higher.
+                  </p>
+                  <Link
+                    href="/dashboard/billing"
+                    className="mt-1 inline-block text-sm font-medium text-primary hover:underline"
+                  >
+                    Upgrade &rarr;
+                  </Link>
+                </div>
+              ) : (
+                <>
               <div className="space-y-2">
                 <Label className="text-xs">Webhook URL</Label>
                 <Input
@@ -1155,8 +1262,12 @@ export default function FormBuilderPage() {
                   onBlur={async () => {
                     try {
                       await updateForm(formId, { webhookUrl: webhookUrl || undefined });
-                    } catch {
-                      toast.error("Failed to save webhook URL");
+                    } catch (error) {
+                      toast.error(
+                        error instanceof Error
+                          ? error.message
+                          : "Failed to save webhook URL",
+                      );
                     }
                   }}
                 />
@@ -1179,6 +1290,8 @@ export default function FormBuilderPage() {
                   }}
                 />
               </div>
+                </>
+              )}
             </div>
 
             <Separator className="my-4" />
@@ -1188,7 +1301,20 @@ export default function FormBuilderPage() {
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Auto-responder
               </Label>
-              <>
+              {!coreUnlocked ? (
+                <div className="rounded-lg border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Auto-responder emails require a PRO or BUSINESS plan.
+                  </p>
+                  <Link
+                    href="/dashboard/billing"
+                    className="mt-1 inline-block text-sm font-medium text-primary hover:underline"
+                  >
+                    Upgrade &rarr;
+                  </Link>
+                </div>
+              ) : (
+                <>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">Send confirmation</p>
@@ -1246,8 +1372,11 @@ export default function FormBuilderPage() {
                     </>
                   )}
                 </>
+              )}
             </div>
 
+            {!isOssEdition() && (
+              <>
             <Separator className="my-4" />
 
             {/* Collect Payments */}
@@ -1256,7 +1385,32 @@ export default function FormBuilderPage() {
                 <DollarSign className="mr-1 inline-block size-3" />
                 Collect Payments
               </Label>
-              <>
+              {!coreUnlocked ? (
+                <div className="rounded-lg border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Payment collection requires a PRO or BUSINESS plan.
+                  </p>
+                  <Link
+                    href="/dashboard/billing"
+                    className="mt-1 inline-block text-sm font-medium text-primary hover:underline"
+                  >
+                    Upgrade →
+                  </Link>
+                </div>
+              ) : !hasConnectAccount ? (
+                <div className="rounded-lg border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Connect your Stripe account to collect payments.
+                  </p>
+                  <Link
+                    href="/dashboard/settings/payments"
+                    className="mt-1 inline-block text-sm font-medium text-primary hover:underline"
+                  >
+                    Connect Stripe →
+                  </Link>
+                </div>
+              ) : (
+                <>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-medium">Enable payments</p>
@@ -1608,7 +1762,10 @@ export default function FormBuilderPage() {
                     </>
                   )}
                 </>
+              )}
             </div>
+              </>
+            )}
 
             <Separator className="my-4" />
 
@@ -1617,7 +1774,8 @@ export default function FormBuilderPage() {
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                 Branding
               </Label>
-              <div className="flex items-center justify-between">
+              {coreUnlocked ? (
+                <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium">Remove branding</p>
                     <p className="text-xs text-muted-foreground">
@@ -1639,6 +1797,19 @@ export default function FormBuilderPage() {
                     }}
                   />
                 </div>
+              ) : (
+                <div className="rounded-lg border border-dashed p-4 text-center">
+                  <p className="text-sm text-muted-foreground">
+                    Removing branding requires a PRO or BUSINESS plan.
+                  </p>
+                  <Link
+                    href="/dashboard/billing"
+                    className="mt-1 inline-block text-sm font-medium text-primary hover:underline"
+                  >
+                    Upgrade &rarr;
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         )}

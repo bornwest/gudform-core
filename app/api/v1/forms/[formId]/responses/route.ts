@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { authenticateApiKey } from "@/lib/api-auth";
+import { authorizeApiRequest } from "@/lib/api-auth";
+import { createCompletedFormResponse } from "@/lib/form-response";
+import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 interface RouteContext {
   params: Promise<{ formId: string }>;
@@ -9,10 +11,9 @@ interface RouteContext {
 
 // GET /api/v1/forms/:formId/responses
 export async function GET(req: Request, context: RouteContext) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const { formId } = await context.params;
 
@@ -31,7 +32,7 @@ export async function GET(req: Request, context: RouteContext) {
 
   const [responses, total] = await Promise.all([
     prisma.formResponse.findMany({
-      where: { formId },
+      where: { formId, ...COUNTABLE_RESPONSE_WHERE },
       include: {
         answers: {
           include: {
@@ -43,7 +44,7 @@ export async function GET(req: Request, context: RouteContext) {
       skip,
       take: limit,
     }),
-    prisma.formResponse.count({ where: { formId } }),
+    prisma.formResponse.count({ where: { formId, ...COUNTABLE_RESPONSE_WHERE } }),
   ]);
 
   return NextResponse.json({
@@ -55,4 +56,44 @@ export async function GET(req: Request, context: RouteContext) {
       totalPages: Math.ceil(total / limit),
     },
   });
+}
+
+export async function POST(req: Request, context: RouteContext) {
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
+
+  const { formId } = await context.params;
+  const form = await prisma.form.findFirst({
+    where: { id: formId, userId: auth.userId },
+    select: { id: true, status: true },
+  });
+  if (!form) {
+    return NextResponse.json({ error: "Form not found" }, { status: 404 });
+  }
+  if (form.status === "CLOSED") {
+    return NextResponse.json({ error: "Form is closed" }, { status: 400 });
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const answers = Array.isArray(body.answers) ? body.answers : null;
+  if (!answers) {
+    return NextResponse.json(
+      { error: "answers must be an array of { questionId, value }" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const response = await createCompletedFormResponse(formId, answers);
+    return NextResponse.json({ response }, { status: 201 });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to submit response",
+      },
+      { status: 400 },
+    );
+  }
 }

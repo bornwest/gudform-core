@@ -86,6 +86,52 @@ export function absoluteUrl(path: string) {
   return `${env.NEXT_PUBLIC_APP_URL}${path}`;
 }
 
+/**
+ * Returns the base URL to use for public-facing share/embed URLs.
+ * On preview/protected hosts (*.vercel.app, dev subdomains), prefers NEXT_PUBLIC_APP_URL.
+ * On the production public host, uses the current origin.
+ */
+export function getPublicBaseUrl(): string {
+  if (typeof window === "undefined") {
+    return env.NEXT_PUBLIC_APP_URL;
+  }
+
+  const currentOrigin = window.location.origin;
+  const publicAppUrl = env.NEXT_PUBLIC_APP_URL;
+
+  // If current origin matches the configured public URL, use it
+  if (currentOrigin === publicAppUrl) {
+    return currentOrigin;
+  }
+
+  // Preview indicators: *.vercel.app or dev.* subdomains
+  const isPreviewHost =
+    currentOrigin.includes(".vercel.app") ||
+    currentOrigin.includes("://dev.") ||
+    currentOrigin.includes("://preview.");
+
+  return isPreviewHost ? publicAppUrl : currentOrigin;
+}
+
+/**
+ * Checks if the current host is a preview/protected environment.
+ * Returns false during SSR or when on the production host.
+ */
+export function isPreviewHost(): boolean {
+  if (typeof window === "undefined") return false;
+
+  const currentOrigin = window.location.origin;
+  const publicAppUrl = env.NEXT_PUBLIC_APP_URL;
+
+  if (currentOrigin === publicAppUrl) return false;
+
+  return (
+    currentOrigin.includes(".vercel.app") ||
+    currentOrigin.includes("://dev.") ||
+    currentOrigin.includes("://preview.")
+  );
+}
+
 export const timeAgo = (timestamp: Date, timeOnly?: boolean): string => {
   if (!timestamp) return "never";
   return `${ms(Date.now() - new Date(timestamp).getTime())}${timeOnly ? "" : " ago"

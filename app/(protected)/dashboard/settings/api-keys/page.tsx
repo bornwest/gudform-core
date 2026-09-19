@@ -20,7 +20,7 @@ export default async function ApiKeysPage() {
     <div className="flex flex-1 flex-col gap-8 p-8">
       <DashboardHeader
         heading="API Keys"
-        text="Manage your API keys for programmatic access to GudForm."
+        text="Create keys for the REST API and MCP. Hosted free plans are rate-limited per minute."
       />
       <ApiKeyManager initialKeys={apiKeys} />
     </div>

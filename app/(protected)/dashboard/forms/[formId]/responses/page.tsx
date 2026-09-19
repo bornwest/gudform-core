@@ -9,10 +9,16 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Code,
+  Copy,
   DollarSign,
   Download,
+  Edit,
+  ExternalLink,
   Eye,
+  FolderOpen,
   Inbox,
+  MoreHorizontal,
   Timer,
   Trash2,
   TrendingUp,
@@ -21,6 +27,7 @@ import {
 import { toast } from "sonner";
 
 import { cn, formatDate, truncate } from "@/lib/utils";
+import { formatChoiceAnswerForDisplay } from "@/lib/choice-answers";
 import { formatPaymentAmount } from "@/config/currencies";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,6 +46,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -50,10 +64,15 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  deleteForm,
   deleteResponse,
+  duplicateForm,
   getFormAnalytics,
+  getFormById,
   getFormResponses,
 } from "@/actions/form-actions";
+import { MoveFormDialog } from "@/components/collections/move-form-dialog";
+import { ShareFormDialog } from "@/components/forms/share-form-dialog";
 
 type FormResponse = Awaited<ReturnType<typeof getFormResponses>>[number];
 type FormAnalytics = Awaited<ReturnType<typeof getFormAnalytics>>;
@@ -79,16 +98,28 @@ export default function FormResponsesPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [responseToDelete, setResponseToDelete] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [moveFormDialogOpen, setMoveFormDialogOpen] = useState(false);
+  const [formSlug, setFormSlug] = useState<string | null>(null);
+  const [formTitle, setFormTitle] = useState<string>("");
+  const [formStatus, setFormStatus] = useState<string | null>(null);
+  const [formCollectionId, setFormCollectionId] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
       try {
-        const [responsesData, analyticsData] = await Promise.all([
+        const [responsesData, analyticsData, formData] = await Promise.all([
           getFormResponses(formId),
           getFormAnalytics(formId),
+          getFormById(formId),
         ]);
         setResponses(responsesData);
         setAnalytics(analyticsData);
+        if (formData) {
+          setFormSlug(formData.slug);
+          setFormTitle(formData.title);
+          setFormStatus(formData.status);
+          setFormCollectionId(formData.collectionId);
+        }
       } catch (error) {
         toast.error("Failed to load responses");
       } finally {
@@ -122,6 +153,42 @@ export default function FormResponsesPage() {
     });
   };
 
+  const handleDuplicate = () => {
+    startTransition(async () => {
+      try {
+        const newForm = await duplicateForm(formId);
+        toast.success("Form duplicated");
+        router.push(`/dashboard/forms/${newForm.id}/responses`);
+      } catch (error) {
+        toast.error("Failed to duplicate form");
+      }
+    });
+  };
+
+  const handleDeleteForm = () => {
+    if (
+      !confirm(
+        "Are you sure you want to delete this form? This action cannot be undone.",
+      )
+    ) {
+      return;
+    }
+    startTransition(async () => {
+      try {
+        await deleteForm(formId);
+        toast.success("Form deleted");
+        router.push("/dashboard");
+      } catch (error) {
+        toast.error("Failed to delete form");
+      }
+    });
+  };
+
+  const handleFormMoved = async () => {
+    setMoveFormDialogOpen(false);
+    toast.success("Form moved");
+  };
+
   const handleDownloadCSV = () => {
     if (responses.length === 0) {
       toast.error("No responses to export");
@@ -150,7 +217,10 @@ export default function FormResponsesPage() {
 
     const rows = responses.map((response) => {
       const answerMap = new Map(
-        response.answers.map((a) => [a.questionId, a.value]),
+        response.answers.map((a) => [
+          a.questionId,
+          formatChoiceAnswerForDisplay(a.value),
+        ]),
       );
       return [
         response.id,
@@ -212,25 +282,84 @@ export default function FormResponsesPage() {
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => router.push(`/dashboard/forms/${formId}/builder`)}
+            onClick={() => router.push("/dashboard")}
           >
             <ArrowLeft className="size-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Responses</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Form Stats</h1>
             <p className="text-sm text-muted-foreground">
               View and manage form responses
             </p>
           </div>
         </div>
-        <Button
-          variant="outline"
-          onClick={handleDownloadCSV}
-          disabled={responses.length === 0}
-        >
-          <Download className="mr-2 size-4" />
-          Download CSV
-        </Button>
+        <div className="flex items-center gap-2">
+          {formStatus === "PUBLISHED" && formSlug && (
+            <ShareFormDialog
+              formId={formId}
+              formTitle={formTitle}
+              slug={formSlug}
+              defaultTab="embed"
+            >
+              <Button variant="outline" disabled={isPending}>
+                <Code className="mr-2 size-4" />
+                Embed
+              </Button>
+            </ShareFormDialog>
+          )}
+          <Button
+            variant="outline"
+            onClick={() => router.push(`/dashboard/forms/${formId}/builder`)}
+            disabled={isPending}
+          >
+            <Edit className="mr-2 size-4" />
+            Edit Form
+          </Button>
+          <Button
+            variant="outline"
+            onClick={handleDownloadCSV}
+            disabled={responses.length === 0 || isPending}
+          >
+            <Download className="mr-2 size-4" />
+            Download CSV
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" disabled={isPending}>
+                <MoreHorizontal className="size-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {formStatus === "PUBLISHED" && formSlug && (
+                <>
+                  <DropdownMenuItem
+                    onClick={() => window.open(`/f/${formSlug}`, "_blank")}
+                  >
+                    <ExternalLink className="mr-2 size-4" />
+                    Open Form
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                </>
+              )}
+              <DropdownMenuItem onClick={() => setMoveFormDialogOpen(true)}>
+                <FolderOpen className="mr-2 size-4" />
+                Move to Collection
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleDuplicate}>
+                <Copy className="mr-2 size-4" />
+                Duplicate
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive"
+                onClick={handleDeleteForm}
+              >
+                <Trash2 className="mr-2 size-4" />
+                Delete Form
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -447,6 +576,16 @@ export default function FormResponsesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Move Form Dialog */}
+      {moveFormDialogOpen && (
+        <MoveFormDialog
+          formId={formId}
+          currentCollectionId={formCollectionId}
+          onClose={() => setMoveFormDialogOpen(false)}
+          onMoved={handleFormMoved}
+        />
+      )}
     </div>
   );
 }
@@ -572,7 +711,7 @@ function ResponseRow({
                         {answer.question.title}
                       </div>
                       <div className="mt-0.5 text-sm">
-                        {answer.value || (
+                        {formatChoiceAnswerForDisplay(answer.value) || (
                           <span className="italic text-muted-foreground">
                             No answer
                           </span>

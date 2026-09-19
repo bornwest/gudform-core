@@ -14,12 +14,13 @@ function EndpointBadge({
   method,
   path,
 }: {
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   path: string;
 }) {
   const colors: Record<string, string> = {
     GET: "bg-emerald-900/50 text-emerald-400",
     POST: "bg-green-900/50 text-green-400",
+    PUT: "bg-sky-900/50 text-sky-400",
     PATCH: "bg-amber-900/50 text-amber-400",
     DELETE: "bg-red-900/50 text-red-400",
   };
@@ -140,8 +141,12 @@ export default function ApiReferencePage() {
 
       <div className="not-prose my-6 rounded-lg border-l-4 border-amber-500 bg-amber-50 p-4 dark:bg-amber-900/10">
         <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
-          API access requires a <strong>Pro</strong> or{" "}
-          <strong>Business</strong> plan.
+          Free keys work on hosted Cloud with per-minute rate limits. Self-host
+          is unlocked. See{" "}
+          <a href="#rate-limits" className="underline">
+            Rate Limits
+          </a>
+          .
         </p>
       </div>
 
@@ -233,6 +238,12 @@ export default function ApiReferencePage() {
             required: false,
             desc: "Collection to place the form in (defaults to your default collection)",
           },
+          {
+            name: "questions",
+            type: "array",
+            required: false,
+            desc: "Optional question list created in the same request",
+          },
         ]}
       />
 
@@ -322,6 +333,32 @@ export default function ApiReferencePage() {
     ],
     "_count": { "responses": 142 }
   }
+}`}
+      </CodeBlock>
+
+      <h3 id="set-questions" className="mt-10">
+        Replace questions
+      </h3>
+      <p>
+        Replace the live question list on a form. Omit <code>id</code> for new
+        questions. Questions not included are deleted.
+      </p>
+      <EndpointBadge method="PUT" path="/api/v1/forms/:formId/questions" />
+
+      <CodeBlock title="Request" language="JSON">
+        {`{
+  "questions": [
+    {
+      "type": "SHORT_TEXT",
+      "title": "What is your name?",
+      "required": true
+    },
+    {
+      "type": "EMAIL",
+      "title": "Email",
+      "required": true
+    }
+  ]
 }`}
       </CodeBlock>
 
@@ -488,6 +525,25 @@ export default function ApiReferencePage() {
     "total": 142,
     "totalPages": 3
   }
+}`}
+      </CodeBlock>
+
+      <h3 id="submit-response" className="mt-10">
+        Submit a response
+      </h3>
+      <p>
+        Submit answers for a form you own. Each item is{" "}
+        <code>questionId</code> plus <code>value</code>. Closed forms are
+        rejected.
+      </p>
+      <EndpointBadge method="POST" path="/api/v1/forms/:formId/responses" />
+
+      <CodeBlock title="Request" language="JSON">
+        {`{
+  "answers": [
+    { "questionId": "q_002", "value": "Jane Smith" },
+    { "questionId": "q_003", "value": "5" }
+  ]
 }`}
       </CodeBlock>
 
@@ -688,7 +744,7 @@ export default function ApiReferencePage() {
               </td>
               <td className="py-2 pr-4">Intro screen</td>
               <td className="py-2">
-                <code>buttonText</code>
+                <code>buttonText, align, titleSize, titleColor, titleBold, descriptionSize, descriptionColor, descriptionBold</code>
               </td>
             </tr>
             <tr className="border-b">
@@ -699,7 +755,7 @@ export default function ApiReferencePage() {
               </td>
               <td className="py-2 pr-4">Single-line text</td>
               <td className="py-2">
-                <code>placeholder</code>
+                <code>placeholder, format (set to url for website fields)</code>
               </td>
             </tr>
             <tr className="border-b">
@@ -794,7 +850,7 @@ export default function ApiReferencePage() {
               </td>
               <td className="py-2 pr-4">Select from options</td>
               <td className="py-2">
-                <code>choices, allowMultiple</code>
+                <code>choices, allowMultiple, minSelections, maxSelections</code>
               </td>
             </tr>
             <tr className="border-b">
@@ -816,7 +872,7 @@ export default function ApiReferencePage() {
               </td>
               <td className="py-2 pr-4">File attachment</td>
               <td className="py-2">
-                <code>maxFileSizeMB</code>
+                <code>maxFileSize</code>
               </td>
             </tr>
             <tr className="border-b">
@@ -827,7 +883,7 @@ export default function ApiReferencePage() {
               </td>
               <td className="py-2 pr-4">Read-only text</td>
               <td className="py-2">
-                <code>buttonText</code>
+                <code>buttonText, align, titleSize, titleColor, titleBold, descriptionSize, descriptionColor, descriptionBold</code>
               </td>
             </tr>
             <tr className="border-b">
@@ -838,7 +894,7 @@ export default function ApiReferencePage() {
               </td>
               <td className="py-2 pr-4">Completion screen</td>
               <td className="py-2">
-                <code>buttonText, showButton</code>
+                <code>align, titleSize, titleColor, titleBold, descriptionSize, descriptionColor, descriptionBold</code>
               </td>
             </tr>
           </tbody>
@@ -922,26 +978,32 @@ export default function ApiReferencePage() {
           <tbody className="text-muted-foreground">
             <tr className="border-b">
               <td className="py-2 pr-4">Free</td>
-              <td className="py-2 pr-4 text-red-500">No</td>
-              <td className="py-2 pr-4">&mdash;</td>
-              <td className="py-2">&mdash;</td>
+              <td className="py-2 pr-4 text-emerald-500">Yes</td>
+              <td className="py-2 pr-4">30 requests/min</td>
+              <td className="py-2">30 requests</td>
             </tr>
             <tr className="border-b">
-              <td className="py-2 pr-4">Starter ($5/mo)</td>
-              <td className="py-2 pr-4 text-red-500">No</td>
-              <td className="py-2 pr-4">&mdash;</td>
-              <td className="py-2">&mdash;</td>
+              <td className="py-2 pr-4">Starter</td>
+              <td className="py-2 pr-4 text-emerald-500">Yes</td>
+              <td className="py-2 pr-4">60 requests/min</td>
+              <td className="py-2">60 requests</td>
             </tr>
             <tr className="border-b">
               <td className="py-2 pr-4">Pro</td>
               <td className="py-2 pr-4 text-emerald-500">Yes</td>
               <td className="py-2 pr-4">100 requests/min</td>
-              <td className="py-2">200 requests</td>
+              <td className="py-2">100 requests</td>
             </tr>
             <tr className="border-b">
               <td className="py-2 pr-4">Business</td>
               <td className="py-2 pr-4 text-emerald-500">Yes</td>
               <td className="py-2 pr-4">500 requests/min</td>
+              <td className="py-2">500 requests</td>
+            </tr>
+            <tr className="border-b">
+              <td className="py-2 pr-4">Self-host</td>
+              <td className="py-2 pr-4 text-emerald-500">Yes</td>
+              <td className="py-2 pr-4">1000 requests/min</td>
               <td className="py-2">1000 requests</td>
             </tr>
           </tbody>

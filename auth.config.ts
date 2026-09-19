@@ -5,45 +5,59 @@ import Resend from "next-auth/providers/resend";
 import bcrypt from "bcryptjs";
 
 import { env } from "@/env.mjs";
+import { getEmailFrom } from "@/lib/email";
 import { loginSchema } from "@/lib/validations/auth";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
 
-// C5: Rate limit login — 5 attempts per 15 minutes per email
 const loginLimiter = rateLimit({ interval: 15 * 60_000 });
 
-export default {
-  providers: [
+const providers: NextAuthConfig["providers"] = [];
+
+if (env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET) {
+  providers.push(
     Google({
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
       allowDangerousEmailAccountLinking: true,
     }),
+  );
+}
+
+if (env.RESEND_API_KEY) {
+  providers.push(
     Resend({
       apiKey: env.RESEND_API_KEY,
-      from: "GudForm <onboarding@resend.dev>",
+      from: getEmailFrom(),
     }),
-    Credentials({
-      async authorize(credentials) {
-        const validatedFields = loginSchema.safeParse(credentials);
-        if (!validatedFields.success) return null;
+  );
+}
 
-        const { email, password } = validatedFields.data;
+providers.push(
+  Credentials({
+    async authorize(credentials) {
+      const validatedFields = loginSchema.safeParse(credentials);
+      if (!validatedFields.success) return null;
 
-        const { success } = loginLimiter.check(5, `login:${email.toLowerCase()}`);
-        if (!success) return null;
+      const { email, password } = validatedFields.data;
 
-        const user = await prisma.user.findUnique({
-          where: { email: email.toLowerCase() },
-        });
+      const { success } = loginLimiter.check(5, `login:${email.toLowerCase()}`);
+      if (!success) return null;
 
-        if (!user || !user.password) return null;
+      const user = await prisma.user.findUnique({
+        where: { email: email.toLowerCase() },
+      });
 
-        const passwordsMatch = await bcrypt.compare(password, user.password);
-        if (!passwordsMatch) return null;
+      if (!user || !user.password) return null;
 
-        return user;
-      },
-    }),
-  ],
+      const passwordsMatch = await bcrypt.compare(password, user.password);
+      if (!passwordsMatch) return null;
+
+      return user;
+    },
+  }),
+);
+
+export default {
+  providers,
 } satisfies NextAuthConfig;

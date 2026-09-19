@@ -62,6 +62,12 @@ const UNIVERSAL_OPS: LogicOperator[] = ["is_answered", "is_not_answered"];
 export function getOperatorsForType(type: QuestionType): LogicOperator[] {
   switch (type) {
     case QuestionType.MULTIPLE_CHOICE:
+      return [
+        ...UNIVERSAL_OPS,
+        ...CHOICE_OPS,
+        "contains",
+        "does_not_contain",
+      ];
     case QuestionType.DROPDOWN:
     case QuestionType.YES_NO:
       return [...UNIVERSAL_OPS, ...CHOICE_OPS];

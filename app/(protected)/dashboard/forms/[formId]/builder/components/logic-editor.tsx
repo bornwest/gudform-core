@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-import { QUESTION_TYPE_META, SCREEN_TYPES } from "./constants";
+import { SCREEN_TYPES, getQuestionDisplayMeta } from "./constants";
 import type { Question, QuestionProperties } from "./types";
 
 export function LogicEditor({
@@ -36,13 +36,23 @@ export function LogicEditor({
 }) {
   const rules = question.logic;
   const operators = getOperatorsForType(question.type);
+  const isChoiceType = (
+    [
+      QuestionType.MULTIPLE_CHOICE,
+      QuestionType.DROPDOWN,
+      QuestionType.YES_NO,
+    ] as QuestionType[]
+  ).includes(question.type);
+  const choiceValues =
+    question.type === QuestionType.YES_NO
+      ? ["Yes", "No"]
+      : question.properties.choices || [];
 
   const addRule = () => {
-    const defaultOp = operators[0] || "is_answered";
     const newRule: LogicRule = {
       id: crypto.randomUUID(),
-      operator: defaultOp,
-      value: undefined,
+      operator: isChoiceType ? "equals" : operators[0] || "is_answered",
+      value: isChoiceType ? choiceValues[0] : undefined,
       action: { type: "end_form" },
     };
     onChange([...rules, newRule]);
@@ -83,21 +93,10 @@ export function LogicEditor({
     }
   }
 
-  const isChoiceType = (
-    [
-      QuestionType.MULTIPLE_CHOICE,
-      QuestionType.DROPDOWN,
-      QuestionType.YES_NO,
-    ] as QuestionType[]
-  ).includes(question.type);
-
-  const getChoices = (): string[] => {
-    if (question.type === QuestionType.YES_NO) return ["Yes", "No"];
-    return question.properties.choices || [];
-  };
+  const getChoices = (): string[] => choiceValues;
 
   const getTargetLabel = (q: Question, i: number) => {
-    const meta = QUESTION_TYPE_META[q.type];
+    const meta = getQuestionDisplayMeta(q);
     const num = questionNumbers[i];
     const isScreen = SCREEN_TYPES.includes(q.type);
     const unsavedTag = !q.id ? " (unsaved)" : "";
@@ -127,7 +126,8 @@ export function LogicEditor({
       </div>
       <p className="text-xs text-muted-foreground">
         Control where respondents go next based on their answer. Rules are
-        checked top to bottom — first match wins.
+        checked top to bottom — first match wins. Questions skipped by a jump or
+        by End form are not required.
       </p>
 
       {rules.length === 0 && (
@@ -149,12 +149,18 @@ export function LogicEditor({
               </span>
               <Select
                 value={rule.operator}
-                onValueChange={(v) =>
+                onValueChange={(v) => {
+                  const operator = v as LogicRule["operator"];
+                  const needsValue = operatorNeedsValue(operator);
                   updateRule(index, {
-                    operator: v as LogicRule["operator"],
-                    value: undefined,
-                  })
-                }
+                    operator,
+                    value: needsValue
+                      ? isChoiceType
+                        ? choiceValues[0]
+                        : rule.value
+                      : undefined,
+                  });
+                }}
               >
                 <SelectTrigger className="h-8 flex-1 text-xs">
                   <SelectValue />
@@ -171,7 +177,7 @@ export function LogicEditor({
               {operatorNeedsValue(rule.operator) &&
                 (isChoiceType ? (
                   <Select
-                    value={rule.value || ""}
+                    value={rule.value || undefined}
                     onValueChange={(v) => updateRule(index, { value: v })}
                   >
                     <SelectTrigger className="h-8 flex-1 text-xs">
@@ -206,7 +212,7 @@ export function LogicEditor({
                 value={
                   rule.action.type === "end_form"
                     ? "__end__"
-                    : rule.action.questionId
+                    : rule.action.questionId || undefined
                 }
                 onValueChange={(v) =>
                   updateRule(index, {

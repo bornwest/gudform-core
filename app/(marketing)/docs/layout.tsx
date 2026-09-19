@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 
+import { isOssEdition } from "@/config/edition";
 import MaxWidthWrapper from "@/components/shared/max-width-wrapper";
 
 interface DocsLayoutProps {
@@ -12,7 +13,9 @@ const sidebarLinks = [
     title: "Getting Started",
     items: [
       { href: "/docs", title: "Introduction" },
+      { href: "/docs/self-hosting", title: "Self-hosting" },
       { href: "/docs/api", title: "API Overview" },
+      { href: "/docs/mcp", title: "MCP" },
     ],
   },
   {
@@ -23,6 +26,7 @@ const sidebarLinks = [
       { href: "/docs/api#responses", title: "Responses" },
       { href: "/docs/api#errors", title: "Error Handling" },
       { href: "/docs/api#rate-limits", title: "Rate Limits" },
+      { href: "/docs/mcp", title: "MCP Server" },
     ],
   },
   {
@@ -46,6 +50,9 @@ const sidebarLinks = [
 ];
 
 export default function DocsLayout({ children }: DocsLayoutProps) {
+  const links = isOssEdition()
+    ? sidebarLinks.filter((section) => section.title !== "Integrations")
+    : sidebarLinks;
   return (
     <MaxWidthWrapper className="py-10 md:py-16">
       <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
@@ -59,7 +66,7 @@ export default function DocsLayout({ children }: DocsLayoutProps) {
             Back to home
           </Link>
           <nav className="space-y-6">
-            {sidebarLinks.map((section) => (
+            {links.map((section) => (
               <div key={section.title}>
                 <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   {section.title}

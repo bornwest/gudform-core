@@ -3,12 +3,13 @@ import {
   ArrowRight,
   Code2,
   FolderOpen,
-  Globe,
   Key,
   Puzzle,
+  Server,
   Webhook,
 } from "lucide-react";
 
+import { isOssEdition } from "@/config/edition";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 
@@ -32,6 +33,12 @@ const quickLinks = [
     href: "/docs/api",
   },
   {
+    icon: Code2,
+    title: "MCP for agents",
+    description: "List forms, read schema, create questions, submit answers",
+    href: "/docs/mcp",
+  },
+  {
     icon: FolderOpen,
     title: "Collections",
     description: "Organize forms into collections with team-based access",
@@ -44,27 +51,39 @@ const quickLinks = [
     href: "/docs/webhooks",
   },
   {
+    icon: Server,
+    title: "Self-hosting",
+    description: "Run GudForm with Docker Compose (OSS edition)",
+    href: "/docs/self-hosting",
+  },
+  {
     icon: Puzzle,
     title: "Integrations",
     description: "Build and publish integrations on the marketplace",
     href: "/docs/integrations",
+    saasOnly: true,
   },
 ];
 
 export default function DocsPage() {
+  const links = isOssEdition()
+    ? quickLinks.filter((link) => !link.saasOnly)
+    : quickLinks;
+
   return (
     <article className="prose prose-gray max-w-none dark:prose-invert">
       <h1 className="text-4xl font-bold tracking-tight">
         GudForm Developer Documentation
       </h1>
       <p className="text-lg text-muted-foreground">
-        Everything you need to integrate with GudForm, build custom workflows,
-        and create integrations for the marketplace.
+        {isOssEdition()
+          ? "API keys, webhooks, and Docker self-hosting for the open-source edition."
+          : "Everything you need to integrate with GudForm, build custom workflows, and create integrations for the marketplace."}
       </p>
 
       {/* Quick Links Grid */}
       <div className="not-prose mt-8 grid gap-4 sm:grid-cols-2">
-        {quickLinks.map((link) => (
+        {links.map((link) => (
           <Link
             key={link.href}
             href={link.href}
@@ -124,7 +143,7 @@ export default function DocsPage() {
       <p>
         The GudForm REST API is organized around standard REST conventions. All
         responses return JSON. We support CRUD operations on forms and
-        collections, plus read access to form responses.
+        collections, plus list and submit for form responses.
       </p>
 
       <div className="not-prose mt-4">
@@ -156,25 +175,31 @@ export default function DocsPage() {
       {/* SDKs */}
       <h2 id="sdks">Client Libraries</h2>
       <p>
-        Use our API with any HTTP client. We also provide typed helpers to speed
-        up integration:
+        Official client libraries are available on npm and PyPI. Install via
+        your package manager:
       </p>
-      <div className="not-prose overflow-hidden rounded-lg border border-gray-200 bg-gray-950 text-sm dark:border-gray-800">
+      <div className="not-prose mt-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-950 text-sm dark:border-gray-800">
         <div className="border-b border-gray-800 px-4 py-2">
           <span className="text-xs font-medium text-gray-400">
-            Install via npm
+            Install SDK
           </span>
         </div>
         <pre className="overflow-x-auto p-4 text-gray-300">
-          <code>{`npm install @gudform/sdk`}</code>
+          <code>{`# TypeScript/JavaScript
+npm install @gudlab/gudform
+
+# Python
+pip install gudform`}</code>
         </pre>
       </div>
       <div className="not-prose mt-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-950 text-sm dark:border-gray-800">
         <div className="border-b border-gray-800 px-4 py-2">
-          <span className="text-xs font-medium text-gray-400">Quick usage</span>
+          <span className="text-xs font-medium text-gray-400">
+            TypeScript SDK example
+          </span>
         </div>
         <pre className="overflow-x-auto p-4 text-gray-300">
-          <code>{`import { GudForm } from "@gudform/sdk";
+          <code>{`import { GudForm } from "@gudlab/gudform";
 
 const client = new GudForm({ apiKey: "ff_your_key" });
 
@@ -196,6 +221,51 @@ const { responses } = await client.forms.responses("form_id", {
 });`}</code>
         </pre>
       </div>
+      <div className="not-prose mt-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-950 text-sm dark:border-gray-800">
+        <div className="border-b border-gray-800 px-4 py-2">
+          <span className="text-xs font-medium text-gray-400">
+            Python SDK example
+          </span>
+        </div>
+        <pre className="overflow-x-auto p-4 text-gray-300">
+          <code>{`from gudform import GudForm
+
+client = GudForm(api_key="ff_your_key")
+
+// List forms
+forms = client.forms.list()
+
+// List forms in a specific collection
+filtered_forms = client.forms.list(collection_id="collection_id")
+
+// List collections
+collections = client.collections.list()
+
+// Get responses
+responses = client.forms.responses("form_id", page=1, limit=50)`}</code>
+        </pre>
+      </div>
+      <p className="mt-4">
+        Source code available at{" "}
+        <a
+          href="https://github.com/gudlab/gudform-core/tree/main/sdk"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-green-600 hover:underline dark:text-green-400"
+        >
+          <code>sdk/</code> (TypeScript)
+        </a>{" "}
+        and{" "}
+        <a
+          href="https://github.com/gudlab/gudform-core/tree/main/sdk/python"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-green-600 hover:underline dark:text-green-400"
+        >
+          <code>sdk/python/</code> (Python)
+        </a>
+        .
+      </p>
 
       <hr className="my-10" />
 
@@ -237,7 +307,8 @@ const { responses } = await client.forms.responses("form_id", {
             <li>&bull; Move forms between collections via PATCH</li>
             <li>
               &bull; Updated <strong>Free plan</strong> &mdash; unlimited forms
-              and submissions (teams, API, and webhooks available on paid tiers)
+              and submissions. Hosted API keys are included with rate limits;
+              teams and webhooks stay on paid tiers.
             </li>
           </ul>
         </div>

@@ -1,67 +1,51 @@
-"use client";
-
-import { useState } from "react";
-import { useParams, useRouter } from "next/navigation";
-import { acceptInvite } from "@/actions/team-actions";
+import Link from "next/link";
 import { Users } from "lucide-react";
-import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { getInvitePreview } from "@/actions/team-actions";
+import { getCurrentUser } from "@/lib/session";
+import { InviteAcceptClient } from "@/components/teams/invite-accept-client";
 
-export default function InvitePage() {
-  const params = useParams();
-  const router = useRouter();
-  const token = params.token as string;
+export const metadata = {
+  title: "Team invitation",
+  description: "Create an account or sign in to join this team.",
+};
 
-  const [accepting, setAccepting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export default async function InvitePage({
+  params,
+}: {
+  params: Promise<{ token: string }>;
+}) {
+  const { token } = await params;
+  const preview = await getInvitePreview(token);
+  const user = await getCurrentUser();
 
-  const handleAccept = async () => {
-    setAccepting(true);
-    setError(null);
-    try {
-      const teamId = await acceptInvite(token);
-      toast.success("You have joined the team!");
-      router.push(`/dashboard/teams/${teamId}`);
-    } catch (err: any) {
-      setError(err.message || "Failed to accept invite");
-    } finally {
-      setAccepting(false);
-    }
-  };
+  if (preview.status !== "ok") {
+    return (
+      <div className="flex min-h-screen items-center justify-center p-4">
+        <div className="mx-auto w-full max-w-md space-y-4 text-center">
+          <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-muted">
+            <Users className="size-8 text-muted-foreground" />
+          </div>
+          <h1 className="text-2xl font-bold">Invitation unavailable</h1>
+          <p className="text-muted-foreground">
+            {preview.status === "expired"
+              ? "This invitation has expired. Ask a team admin to send a new one."
+              : "This invitation is invalid or has already been used."}
+          </p>
+          <Link href="/login" className="text-sm text-green-600 hover:underline">
+            Go to sign in
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="mx-auto w-full max-w-md space-y-6 text-center">
-        <div className="mx-auto flex size-16 items-center justify-center rounded-full bg-primary/10">
-          <Users className="size-8 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-2xl font-bold">Team Invitation</h1>
-          <p className="mt-2 text-muted-foreground">
-            You have been invited to join a team on GudForm.
-          </p>
-        </div>
-
-        {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
-            {error}
-          </div>
-        )}
-
-        <Button
-          onClick={handleAccept}
-          disabled={accepting}
-          className="w-full"
-          size="lg"
-        >
-          {accepting ? "Joining..." : "Accept Invitation"}
-        </Button>
-
-        <p className="text-xs text-muted-foreground">
-          You need to be signed in to accept this invitation.
-        </p>
-      </div>
-    </div>
+    <InviteAcceptClient
+      token={token}
+      teamName={preview.teamName}
+      invitedEmail={preview.email}
+      signedInEmail={user?.email ?? null}
+    />
   );
 }

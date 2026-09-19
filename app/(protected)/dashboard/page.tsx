@@ -15,6 +15,8 @@ import {
   ExternalLink,
   FileText,
   FolderOpen,
+  Grid3x3,
+  List,
   MoreHorizontal,
   Plus,
   Sparkles,
@@ -40,6 +42,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@/components/ui/toggle-group";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { OnboardingChecklist } from "@/components/onboarding-checklist";
 import { MoveFormDialog } from "@/components/collections/move-form-dialog";
 
 type FormWithCounts = Awaited<ReturnType<typeof getUserForms>>[number];
@@ -54,6 +67,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
   const [moveFormId, setMoveFormId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const loadForms = async (collectionId?: string) => {
     const data = await getUserForms(
@@ -63,6 +77,12 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    // Load view mode preference from localStorage
+    const savedViewMode = localStorage.getItem("forms-view-mode");
+    if (savedViewMode === "list" || savedViewMode === "grid") {
+      setViewMode(savedViewMode);
+    }
+
     Promise.all([getUserForms(), getUserCollections()]).then(
       ([formsData, collectionsData]) => {
         setForms(formsData);
@@ -71,6 +91,13 @@ export default function DashboardPage() {
       },
     );
   }, []);
+
+  const handleViewModeChange = (value: string) => {
+    if (value === "grid" || value === "list") {
+      setViewMode(value);
+      localStorage.setItem("forms-view-mode", value);
+    }
+  };
 
   const handleCollectionFilter = (value: string) => {
     setSelectedCollectionId(value);
@@ -113,30 +140,54 @@ export default function DashboardPage() {
 
   return (
     <div>
+      {!loading && (
+        <OnboardingChecklist
+          forms={forms.map((form) => ({
+            status: form.status,
+            publishedAt: form.publishedAt,
+            responses: form._count.responses,
+          }))}
+        />
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">My Forms</h1>
           <p className="text-muted-foreground">Create and manage your forms</p>
         </div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button disabled={isPending}>
-              <Plus className="mr-2 size-4" />
-              New Form
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleCreateForm}>
-              <FileText className="mr-2 size-4" />
-              Blank Form
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => router.push("/templates")}>
-              <Sparkles className="mr-2 size-4" />
-              Browse Templates
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center gap-3">
+          <ToggleGroup
+            type="single"
+            value={viewMode}
+            onValueChange={handleViewModeChange}
+            aria-label="View mode"
+          >
+            <ToggleGroupItem value="grid" aria-label="Grid view">
+              <Grid3x3 className="size-4" />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="list" aria-label="List view">
+              <List className="size-4" />
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button disabled={isPending}>
+                <Plus className="mr-2 size-4" />
+                New Form
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleCreateForm}>
+                <FileText className="mr-2 size-4" />
+                Blank Form
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => router.push("/templates")}>
+                <Sparkles className="mr-2 size-4" />
+                Browse Templates
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       </div>
 
       {/* Collection Filter */}
@@ -196,132 +247,258 @@ export default function DashboardPage() {
           </div>
         </div>
       ) : (
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {forms.map((form) => (
-            <Card
-              key={form.id}
-              className="group relative cursor-pointer p-5 transition-shadow hover:shadow-md"
-              onClick={() => router.push(`/dashboard/forms/${form.id}/builder`)}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h3 className="truncate font-semibold">{form.title}</h3>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    <button
-                      type="button"
-                      className="underline-offset-4 hover:underline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/dashboard/forms/${form.id}/responses`);
-                      }}
-                    >
-                      {form._count.responses} response
-                      {form._count.responses !== 1 ? "s" : ""}
-                    </button>{" "}
-                    &middot; {form._count.questions} question
-                    {form._count.questions !== 1 ? "s" : ""}
-                  </p>
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    asChild
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="size-8 p-0 opacity-0 group-hover:opacity-100"
-                    >
-                      <MoreHorizontal className="size-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/dashboard/forms/${form.id}/builder`);
-                      }}
-                    >
-                      Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        router.push(`/dashboard/forms/${form.id}/responses`);
-                      }}
-                    >
-                      <BarChart3 className="mr-2 size-4" />
-                      View Stats
-                    </DropdownMenuItem>
-                    {form.status === "PUBLISHED" && (
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(`/f/${form.slug}`, "_blank");
-                        }}
-                      >
-                        <ExternalLink className="mr-2 size-4" />
-                        View Live
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setMoveFormId(form.id);
-                      }}
-                    >
-                      <FolderOpen className="mr-2 size-4" />
-                      Move to Collection
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDuplicate(form.id);
-                      }}
-                    >
-                      <Copy className="mr-2 size-4" />
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDelete(form.id);
-                      }}
-                    >
-                      <Trash2 className="mr-2 size-4" />
-                      Delete
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-
-              <div className="mt-4 flex items-center gap-2">
-                <span
-                  className={cn(
-                    "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                    form.status === "PUBLISHED"
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                      : form.status === "CLOSED"
-                        ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
-                        : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
-                  )}
+        <TooltipProvider>
+          {viewMode === "grid" ? (
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {forms.map((form) => (
+                <Card
+                  key={form.id}
+                  className="group relative cursor-pointer p-5 transition-shadow hover:shadow-md"
+                  onClick={() =>
+                    router.push(`/dashboard/forms/${form.id}/responses`)
+                  }
                 >
-                  {form.status.toLowerCase()}
-                </span>
-                {form.collection && selectedCollectionId === "all" && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
-                    <FolderOpen className="size-3" />
-                    {form.collection.name}
-                  </span>
-                )}
-                <span className="text-xs text-muted-foreground">
-                  Updated {formatDate(form.updatedAt.toISOString())}
-                </span>
-              </div>
-            </Card>
-          ))}
-        </div>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 overflow-hidden">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <h3 className="truncate font-semibold">
+                            {form.title}
+                          </h3>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          <p>{form.title}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {form._count.responses} response
+                        {form._count.responses !== 1 ? "s" : ""} &middot;{" "}
+                        {form._count.questions} question
+                        {form._count.questions !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        asChild
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="size-8 p-0 opacity-0 group-hover:opacity-100"
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/dashboard/forms/${form.id}/builder`);
+                          }}
+                        >
+                          Edit
+                        </DropdownMenuItem>
+                        {form.status === "PUBLISHED" && (
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`/f/${form.slug}`, "_blank");
+                            }}
+                          >
+                            <ExternalLink className="mr-2 size-4" />
+                            Share
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMoveFormId(form.id);
+                          }}
+                        >
+                          <FolderOpen className="mr-2 size-4" />
+                          Move to Collection
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDuplicate(form.id);
+                          }}
+                        >
+                          <Copy className="mr-2 size-4" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(form.id);
+                          }}
+                        >
+                          <Trash2 className="mr-2 size-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+
+                  <div className="mt-4 flex items-center gap-2">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                        form.status === "PUBLISHED"
+                          ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                          : form.status === "CLOSED"
+                            ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                            : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+                      )}
+                    >
+                      {form.status.toLowerCase()}
+                    </span>
+                    {form.collection && selectedCollectionId === "all" && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                        <FolderOpen className="size-3" />
+                        {form.collection.name}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground">
+                      Updated {formatDate(form.updatedAt.toISOString())}
+                    </span>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="mt-6 space-y-2">
+              {forms.map((form) => (
+                <Card
+                  key={form.id}
+                  className="group cursor-pointer p-4 transition-shadow hover:shadow-md"
+                  onClick={() =>
+                    router.push(`/dashboard/forms/${form.id}/responses`)
+                  }
+                >
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex flex-1 items-center gap-4 overflow-hidden">
+                      <div className="flex-1 overflow-hidden">
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <h3 className="truncate font-semibold">
+                              {form.title}
+                            </h3>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{form.title}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                              form.status === "PUBLISHED"
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                : form.status === "CLOSED"
+                                  ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                                  : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
+                            )}
+                          >
+                            {form.status.toLowerCase()}
+                          </span>
+                          {form.collection && selectedCollectionId === "all" && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground">
+                              <FolderOpen className="size-3" />
+                              {form.collection.name}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                        <div>
+                          <span className="font-medium">
+                            {form._count.responses}
+                          </span>{" "}
+                          response{form._count.responses !== 1 ? "s" : ""}
+                        </div>
+                        <div>
+                          <span className="font-medium">
+                            {form._count.questions}
+                          </span>{" "}
+                          question{form._count.questions !== 1 ? "s" : ""}
+                        </div>
+                        <div className="text-xs">
+                          Updated {formatDate(form.updatedAt.toISOString())}
+                        </div>
+                      </div>
+                    </div>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger
+                        asChild
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="size-8 p-0 opacity-0 group-hover:opacity-100"
+                        >
+                          <MoreHorizontal className="size-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            router.push(`/dashboard/forms/${form.id}/builder`);
+                          }}
+                        >
+                          Edit
+                        </DropdownMenuItem>
+                        {form.status === "PUBLISHED" && (
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(`/f/${form.slug}`, "_blank");
+                            }}
+                          >
+                            <ExternalLink className="mr-2 size-4" />
+                            Share
+                          </DropdownMenuItem>
+                        )}
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMoveFormId(form.id);
+                          }}
+                        >
+                          <FolderOpen className="mr-2 size-4" />
+                          Move to Collection
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDuplicate(form.id);
+                          }}
+                        >
+                          <Copy className="mr-2 size-4" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          className="text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDelete(form.id);
+                          }}
+                        >
+                          <Trash2 className="mr-2 size-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TooltipProvider>
       )}
 
       {/* Move Form Dialog */}

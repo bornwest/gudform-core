@@ -5,6 +5,7 @@ import { getUserSettings } from "@/actions/update-user-settings";
 import { constructMetadata } from "@/lib/utils";
 import { DeleteAccountSection } from "@/components/dashboard/delete-account";
 import { DashboardHeader } from "@/components/dashboard/header";
+import { UserImageForm } from "@/components/forms/user-image-form";
 import { UserNameForm } from "@/components/forms/user-name-form";
 import { UserEmailInfo } from "@/components/settings/user-email-info";
 import { NotificationPreferences } from "@/components/settings/notification-preferences";
@@ -28,6 +29,13 @@ export default async function SettingsPage() {
       />
       <div className="divide-y divide-muted pb-10">
         <UserNameForm user={{ id: user.id, name: user.name || "" }} />
+        <UserImageForm
+          user={{
+            id: user.id,
+            name: settings.name,
+            image: settings.image,
+          }}
+        />
         <UserEmailInfo
           email={settings.email}
           emailVerified={settings.emailVerified}

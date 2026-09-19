@@ -1,12 +1,9 @@
 "use server";
 
-import { Resend } from "resend";
-
 import { prisma } from "@/lib/db";
+import { getEmailFrom, getResend } from "@/lib/email";
 import { escapeHtml } from "@/lib/html-escape";
 import { getCurrentUser } from "@/lib/session";
-
-const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function sendFormByEmail(
   formId: string,
@@ -44,9 +41,12 @@ export async function sendFormByEmail(
     </div>
   `;
 
+  const resend = getResend();
+  if (!resend) throw new Error("Email is not configured");
+
   for (const email of recipientEmails) {
     await resend.emails.send({
-      from: "GudForm <onboarding@resend.dev>",
+      from: getEmailFrom(),
       to: email,
       subject: `${user.name || "Someone"} invited you to fill out "${form.title}"`,
       html: emailBody,

@@ -30,6 +30,13 @@ enum TeamRole {
   MEMBER
 }
 
+enum SubscriptionPlan {
+  FREE
+  STARTER
+  PRO
+  BUSINESS
+}
+
 enum PaymentStatus {
   PENDING
   COMPLETED
@@ -105,13 +112,18 @@ model User {
   notifyStorage   Boolean @default(true) @map("notify_storage")
   marketingEmails Boolean @default(false) @map("marketing_emails")
 
-  accounts    Account[]
-  sessions    Session[]
-  forms       Form[]
-  teamMembers TeamMember[]
-  apiKeys     ApiKey[]
-  collections Collection[]
-  fileUploads FileUpload[]
+  accounts             Account[]
+  sessions             Session[]
+  forms                Form[]
+
+  teamMembers          TeamMember[]
+  apiKeys              ApiKey[]
+
+  collections          Collection[]
+  fileUploads          FileUpload[]
+
+  templates            FormTemplate[]
+  templateUses         TemplateUse[]
 
   @@map(name: "users")
 }
@@ -137,6 +149,7 @@ model Form {
   backgroundColor String        @default("#ffffff")
   themeMode       FormThemeMode @default(LIGHT)
   showProgressBar Boolean       @default(true)
+  displayMode     String        @default("conversational") @map("display_mode")
   redirectUrl     String?
   notifyOnResponse Boolean      @default(true)
   closeDate       DateTime?
@@ -165,19 +178,37 @@ model Form {
   updatedAt   DateTime  @updatedAt @map(name: "updated_at")
   publishedAt DateTime? @map(name: "published_at")
 
-  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team        Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
-  collection  Collection?    @relation(fields: [collectionId], references: [id], onDelete: SetNull)
-  questions   Question[]
-  responses   FormResponse[]
-  views       FormView[]
-  fileUploads FileUpload[]
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team         Team?          @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  collection   Collection?    @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  questions    Question[]
+  formVersions FormVersion[]
+  responses    FormResponse[]
+  views        FormView[]
+  fileUploads  FileUpload[]
 
   @@index([userId])
   @@index([slug])
   @@index([teamId])
   @@index([collectionId])
   @@map(name: "forms")
+}
+
+model FormVersion {
+  id           String   @id @default(cuid())
+  formId       String   @map("form_id")
+  versionNumber Int     @map("version_number")
+  snapshot     Json
+  isBreaking   Boolean  @default(false) @map("is_breaking")
+  changesSummary String? @db.Text @map("changes_summary")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  form      Form           @relation(fields: [formId], references: [id], onDelete: Cascade)
+  responses FormResponse[]
+
+  @@unique([formId, versionNumber])
+  @@index([formId])
+  @@map(name: "form_versions")
 }
 
 model Question {
@@ -190,6 +221,7 @@ model Question {
   required    Boolean      @default(false)
   properties  Json         @default("{}")
   logic       Json         @default("[]")
+  deletedAt   DateTime?    @map(name: "deleted_at")
 
   createdAt DateTime @default(now()) @map(name: "created_at")
   updatedAt DateTime @updatedAt @map(name: "updated_at")
@@ -198,17 +230,19 @@ model Question {
   answers Answer[]
 
   @@index([formId])
+  @@index([formId, deletedAt])
   @@map(name: "questions")
 }
 
 model FormResponse {
-  id          String    @id @default(cuid())
-  formId      String
-  startedAt   DateTime  @default(now())
-  completedAt DateTime?
-  ipAddress   String?
-  userAgent   String?
-  referrer    String?
+  id              String    @id @default(cuid())
+  formId          String
+  formVersionId   String?   @map("form_version_id")
+  startedAt       DateTime  @default(now())
+  completedAt     DateTime?
+  ipAddress       String?
+  userAgent       String?
+  referrer        String?
 
   paymentStatus           PaymentStatus? @map("payment_status")
   paymentAmount           Int?           @map("payment_amount")
@@ -217,12 +251,16 @@ model FormResponse {
   stripePaymentIntentId   String?        @map("stripe_payment_intent_id")
   selectedPaymentOptionIds Json?         @map("selected_payment_option_ids")
 
-  form    Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
-  answers Answer[]
+  resumeToken String? @unique @map("resume_token")
+
+  form        Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formVersion FormVersion? @relation(fields: [formVersionId], references: [id], onDelete: SetNull)
+  answers     Answer[]
 
   @@index([formId])
   @@index([formId, completedAt])
   @@index([formId, paymentStatus])
+  @@index([formVersionId])
   @@map(name: "form_responses")
 }
 
@@ -236,7 +274,7 @@ model Answer {
   createdAt DateTime @default(now()) @map(name: "created_at")
 
   response FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
-  question Question     @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  question Question     @relation(fields: [questionId], references: [id], onDelete: Restrict)
 
   @@unique([responseId, questionId])
   @@index([responseId])
@@ -354,7 +392,103 @@ model ApiKey {
 }
 
 // ---------------------------------------------------------------------------
-// File Uploads (S3-compatible Storage)
+// Template Marketplace
+// ---------------------------------------------------------------------------
+
+enum TemplateCategory {
+  SURVEY
+  FEEDBACK
+  REGISTRATION
+  APPLICATION
+  ORDER
+  QUIZ
+  LEAD_GENERATION
+  CONTACT
+  HR
+  EDUCATION
+  HEALTHCARE
+  OTHER
+}
+
+enum TemplatePricingType {
+  FREE
+  ONE_TIME
+}
+
+enum TemplateStatus {
+  DRAFT
+  IN_REVIEW
+  PUBLISHED
+  REJECTED
+  ARCHIVED
+}
+
+model FormTemplate {
+  id              String              @id @default(cuid())
+  slug            String              @unique
+  name            String
+  description     String              @db.Text
+  longDescription String?             @db.Text @map("long_description")
+  icon            String
+  category        TemplateCategory    @default(OTHER)
+  status          TemplateStatus      @default(DRAFT)
+
+  // Author
+  authorId        String              @map("author_id")
+  authorName      String              @map("author_name")
+  authorEmail     String?             @map("author_email")
+
+  // The complete form snapshot (questions, settings, theme)
+  formData        Json                @map("form_data")
+
+  // Pricing
+  pricingType     TemplatePricingType @default(FREE) @map("pricing_type")
+  pricingAmount   Int?                @map("pricing_amount")
+  pricingCurrency String              @default("usd") @map("pricing_currency")
+
+  // Stats
+  useCount        Int                 @default(0) @map("use_count")
+
+  // Built-in flag
+  isOfficial      Boolean             @default(false) @map("is_official")
+
+  // Review
+  rejectionReason String?             @db.Text @map("rejection_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  author    User           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  uses      TemplateUse[]
+
+  @@index([category])
+  @@index([status])
+  @@index([authorId])
+  @@map("form_templates")
+}
+
+model TemplateUse {
+  id          String   @id @default(cuid())
+  templateId  String   @map("template_id")
+  userId      String   @map("user_id")
+
+  // Stripe payment (paid templates only)
+  stripeCheckoutSessionId String? @map("stripe_checkout_session_id")
+  stripePaymentIntentId   String? @map("stripe_payment_intent_id")
+  amountPaid              Int?    @map("amount_paid")
+
+  usedAt DateTime @default(now()) @map("used_at")
+
+  template FormTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  user     User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([templateId])
+  @@index([userId])
+  @@map("template_uses")
+}
+
+// ---------------------------------------------------------------------------
+// File Uploads (Platform R2 Storage)
 // ---------------------------------------------------------------------------
 
 model FileUpload {

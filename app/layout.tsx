@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { Analytics } from "@/components/analytics";
 import ModalProvider from "@/components/modals/providers";
 import { TailwindIndicator } from "@/components/tailwind-indicator";
+import { CookieConsent } from "@/components/cookie-consent";
 
 interface RootLayoutProps {
   children: React.ReactNode;
@@ -80,6 +81,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
             <Analytics />
             <Toaster richColors closeButton />
             <TailwindIndicator />
+            <CookieConsent />
           </ThemeProvider>
         </SessionProvider>
       </body>

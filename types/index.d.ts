@@ -22,6 +22,7 @@ export type NavItem = {
   disabled?: boolean;
   external?: boolean;
   authorizeOnly?: UserRole;
+  saasOnly?: boolean;
   icon?: keyof typeof Icons;
 };
 
@@ -35,6 +36,7 @@ export type SidebarNavItem = {
   title: string;
   items: NavItem[];
   authorizeOnly?: UserRole;
+  saasOnly?: boolean;
   icon?: keyof typeof Icons;
 };
 

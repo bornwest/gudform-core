@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { authenticateApiKey } from "@/lib/api-auth";
+import { authorizeApiRequest } from "@/lib/api-auth";
+import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 interface RouteContext {
   params: Promise<{ collectionId: string }>;
@@ -9,10 +10,9 @@ interface RouteContext {
 
 // GET /api/v1/collections/:collectionId — Get a single collection
 export async function GET(req: Request, context: RouteContext) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const { collectionId } = await context.params;
 
@@ -27,7 +27,7 @@ export async function GET(req: Request, context: RouteContext) {
           status: true,
           createdAt: true,
           updatedAt: true,
-          _count: { select: { responses: true, questions: true } },
+          _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE }, questions: true } },
         },
         orderBy: { updatedAt: "desc" },
       },
@@ -47,10 +47,9 @@ export async function GET(req: Request, context: RouteContext) {
 
 // PATCH /api/v1/collections/:collectionId — Update a collection
 export async function PATCH(req: Request, context: RouteContext) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const { collectionId } = await context.params;
   const body = await req.json().catch(() => ({}));
@@ -91,10 +90,9 @@ export async function PATCH(req: Request, context: RouteContext) {
 
 // DELETE /api/v1/collections/:collectionId — Delete a collection
 export async function DELETE(req: Request, context: RouteContext) {
-  const auth = await authenticateApiKey(req);
-  if (!auth) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const gate = await authorizeApiRequest(req);
+  if (!gate.ok) return gate.response;
+  const auth = gate.auth;
 
   const { collectionId } = await context.params;
 

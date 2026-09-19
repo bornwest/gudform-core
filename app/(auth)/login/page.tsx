@@ -19,6 +19,8 @@ export default async function LoginPage({
   searchParams: Promise<{ [key: string]: string | undefined }>;
 }) {
   const params = await searchParams;
+  const from = params?.from || "";
+  const signupHref = from.startsWith("/invite/") ? from : "/register";
 
   return (
     <MaxWidthWrapper className="py-16 md:py-24">
@@ -48,7 +50,7 @@ export default async function LoginPage({
             </Suspense>
             <p className="px-8 text-center text-sm text-muted-foreground">
               <Link
-                href="/register"
+                href={signupHref}
                 className="hover:text-brand underline underline-offset-4"
               >
                 Don&apos;t have an account? Sign Up

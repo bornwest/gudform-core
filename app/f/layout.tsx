@@ -12,7 +12,7 @@ export default function FormLayout({ children }: FormLayoutProps) {
   return (
     <div
       className={cn(
-        "min-h-screen font-sans antialiased",
+        "min-h-0 font-sans antialiased",
         fontSans.variable,
         fontHeading.variable,
         fontSatoshi.variable,

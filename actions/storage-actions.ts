@@ -2,10 +2,14 @@
 
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
+import { getEffectivePlanConfig } from "@/lib/subscription";
 
 export async function getStorageUsage() {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
+
+  const config = await getEffectivePlanConfig(user.id);
+  const plan = config.plan;
 
   const [agg, fileCount] = await Promise.all([
     prisma.fileUpload.aggregate({
@@ -16,14 +20,16 @@ export async function getStorageUsage() {
   ]);
 
   const totalBytes = agg._sum.fileSize ?? 0;
+  const maxBytes = config.features.maxStorageBytes;
+  const usagePercent = maxBytes === -1 ? 0 : Math.round((totalBytes / maxBytes) * 100);
 
   return {
     totalBytes,
     fileCount,
-    maxBytes: -1, // unlimited
-    retentionDays: null, // no expiration
-    plan: "SELF_HOSTED",
-    planName: "Self-Hosted",
-    usagePercent: 0,
+    maxBytes,
+    retentionDays: config.features.fileRetentionDays,
+    plan,
+    planName: config.name,
+    usagePercent,
   };
 }
