@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
+  AlertCircle,
   Check,
   Code,
   Copy,
@@ -15,6 +16,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -28,12 +30,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { getPublicBaseUrl, isPreviewHost } from "@/lib/utils";
 
 interface ShareFormDialogProps {
   formId: string;
   formTitle: string;
   slug: string;
   children: React.ReactNode;
+  defaultTab?: "link" | "qr" | "social" | "embed";
 }
 
 export function ShareFormDialog({
@@ -41,17 +45,41 @@ export function ShareFormDialog({
   formTitle,
   slug,
   children,
+  defaultTab = "link",
 }: ShareFormDialogProps) {
   const [copied, setCopied] = useState<string | null>(null);
   const [emailRecipients, setEmailRecipients] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
   const [sendingEmail, setSendingEmail] = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
+  
+  // Embed settings
+  const [embedType, setEmbedType] = useState<"iframe" | "script">("iframe");
+  const [embedHeight, setEmbedHeight] = useState<"auto" | "compact" | "tall">("auto");
 
-  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-  const formUrl = `${baseUrl}/f/${slug}`;
-  const iframeCode = `<iframe src="${formUrl}" width="100%" height="600" frameborder="0" style="border:none;border-radius:8px;"></iframe>`;
-  const scriptCode = `<div id="gudform-${slug}"></div>\n<script src="${baseUrl}/embed.js" data-form="${slug}"></script>`;
+  // Use public base URL for embeds to avoid Vercel preview auth blocking iframes
+  const publicBaseUrl = getPublicBaseUrl();
+  const isOnPreview = isPreviewHost();
+
+  // For viewing, use current origin; for sharing/embedding, use public URL
+  const viewUrl = typeof window !== "undefined" ? window.location.origin : publicBaseUrl;
+  const formUrl = `${viewUrl}/f/${slug}`;
+  const embedUrl = `${publicBaseUrl}/f/${slug}?embed=1`;
+  
+  // Calculate height based on selected preset
+  const heightValue = embedHeight === "compact" ? "400" : embedHeight === "tall" ? "800" : "600";
+  
+  const iframeCode = `<iframe src="${embedUrl}" width="100%" height="${heightValue}" frameborder="0" style="border:none;border-radius:8px;max-width:100%;"></iframe>
+<script>
+window.addEventListener("message", function (e) {
+  if (!e.data || e.data.type !== "gudform:resize") return;
+  var iframe = document.querySelector('iframe[src="${embedUrl}"]');
+  if (iframe) iframe.style.height = Math.max(320, e.data.height) + "px";
+});
+</script>`;
+  const scriptCode = `<div id="gudform-${slug}"></div>\n<script src="${publicBaseUrl}/embed.js" data-form="${slug}"></script>`;
+  
+  const embedCode = embedType === "iframe" ? iframeCode : scriptCode;
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -139,7 +167,7 @@ export function ShareFormDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <Tabs defaultValue="link" className="mt-4">
+        <Tabs defaultValue={defaultTab} className="mt-4">
           <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="link" className="text-xs">
               <Link2 className="mr-1 size-3.5" />
@@ -254,40 +282,103 @@ export function ShareFormDialog({
 
           {/* Embed Tab */}
           <TabsContent value="embed" className="space-y-4">
-            <div className="space-y-2">
-              <Label>iFrame Embed</Label>
-              <div className="relative">
-                <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-                  {iframeCode}
-                </pre>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="absolute right-2 top-2"
-                  onClick={() => copyToClipboard(iframeCode, "iframe")}
-                >
-                  {copied === "iframe" ? (
-                    <Check className="mr-1 size-3" />
-                  ) : (
-                    <Copy className="mr-1 size-3" />
-                  )}
-                  Copy
-                </Button>
+            {isOnPreview && (
+              <Alert>
+                <AlertCircle className="size-4" />
+                <AlertDescription>
+                  Preview iframes are blocked by Vercel auth — snippet uses the
+                  public production URL.
+                </AlertDescription>
+              </Alert>
+            )}
+            
+            {/* Embed Settings */}
+            <div className="space-y-4 rounded-lg border bg-muted/30 p-4">
+              <div className="space-y-2">
+                <Label className="text-sm font-semibold">Embed Type</Label>
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant={embedType === "iframe" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setEmbedType("iframe")}
+                    className="flex-1"
+                  >
+                    iFrame
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={embedType === "script" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setEmbedType("script")}
+                    className="flex-1"
+                  >
+                    Script
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {embedType === "iframe" 
+                    ? "Fixed-size iframe with auto-resize script" 
+                    : "Dynamic script embed (recommended)"}
+                </p>
               </div>
+              
+              {embedType === "iframe" && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Initial Height</Label>
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      variant={embedHeight === "compact" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setEmbedHeight("compact")}
+                      className="flex-1"
+                    >
+                      Compact
+                      <span className="ml-1 text-xs opacity-70">(400px)</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={embedHeight === "auto" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setEmbedHeight("auto")}
+                      className="flex-1"
+                    >
+                      Auto
+                      <span className="ml-1 text-xs opacity-70">(600px)</span>
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={embedHeight === "tall" ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setEmbedHeight("tall")}
+                      className="flex-1"
+                    >
+                      Tall
+                      <span className="ml-1 text-xs opacity-70">(800px)</span>
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Height will automatically adjust to fit content
+                  </p>
+                </div>
+              )}
             </div>
+            
+            {/* Generated Code Preview */}
             <div className="space-y-2">
-              <Label>Script Embed</Label>
+              <Label className="text-sm font-semibold">Embed Code</Label>
               <div className="relative">
-                <pre className="overflow-x-auto rounded-md bg-muted p-3 text-xs">
-                  {scriptCode}
+                <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-md bg-muted p-4 pr-16 text-xs">
+                  {embedCode}
                 </pre>
                 <Button
                   variant="outline"
                   size="sm"
                   className="absolute right-2 top-2"
-                  onClick={() => copyToClipboard(scriptCode, "script")}
+                  onClick={() => copyToClipboard(embedCode, "embed")}
                 >
-                  {copied === "script" ? (
+                  {copied === "embed" ? (
                     <Check className="mr-1 size-3" />
                   ) : (
                     <Copy className="mr-1 size-3" />
@@ -295,6 +386,9 @@ export function ShareFormDialog({
                   Copy
                 </Button>
               </div>
+              <p className="text-xs text-muted-foreground">
+                Paste this code into your website where you want the form to appear
+              </p>
             </div>
           </TabsContent>
         </Tabs>
