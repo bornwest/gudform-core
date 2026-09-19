@@ -1,7 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
-import { resend } from "@/lib/email";
+import { getResend } from "@/lib/email";
 import { siteConfig } from "@/config/site";
 import { env } from "@/env.mjs";
 import MagicLinkEmail from "@/emails/magic-link-email";
@@ -31,9 +31,12 @@ export async function sendVerificationEmail(
   name: string,
   token: string,
 ) {
+  const client = getResend();
+  if (!client) return;
+
   const verifyUrl = `${env.NEXT_PUBLIC_APP_URL}/api/auth/verify-email?token=${token}`;
 
-  await resend.emails.send({
+  await client.emails.send({
     from: `${siteConfig.name} <onboarding@resend.dev>`,
     to:
       process.env.NODE_ENV === "development" ? "delivered@resend.dev" : email,
