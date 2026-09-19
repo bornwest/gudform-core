@@ -273,7 +273,7 @@ export const FORM_COMPONENTS: FormComponent[] = [
         type: QuestionType.SHORT_TEXT,
         title: "Website",
         required: false,
-        properties: { placeholder: "https://yourwebsite.com" },
+        properties: { placeholder: "https://yourwebsite.com", format: "url" },
       },
     ],
   },

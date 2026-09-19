@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+import { validateChoiceSelections, validateRankingAnswer } from "@/lib/choice-answers";
+import { getReachedQuestionIds } from "@/lib/form-logic";
+import type { LogicRule } from "@/lib/types/logic";
 import { validateRedirectUrl } from "@/lib/url-validation";
 
 // ---------------------------------------------------------------------------
@@ -24,6 +27,21 @@ export function validateEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+/** Validate a website answer: http(s) URL, protocol optional. */
+export function validateWebsite(url: string): boolean {
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+  const withProtocol = /^[a-z][a-z0-9+.-]*:/i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  try {
+    const parsed = new URL(withProtocol);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Server-side answer validation
 // ---------------------------------------------------------------------------
@@ -33,6 +51,7 @@ interface QuestionForValidation {
   type: string;
   required: boolean;
   properties: Record<string, any> | null;
+  logic?: LogicRule[] | null;
 }
 
 interface AnswerInput {
@@ -53,6 +72,7 @@ export function validateAnswers(
   // Build lookup maps
   const questionMap = new Map(questions.map((q) => [q.id, q]));
   const answerMap = new Map(answers.map((a) => [a.questionId, a.value]));
+  const reached = getReachedQuestionIds(questions, answers);
 
   // 1. Check that all submitted questionIds belong to the form
   for (const answer of answers) {
@@ -62,10 +82,11 @@ export function validateAnswers(
   }
   if (errors.length > 0) return { valid: false, errors };
 
-  // 2. Check required fields
+  // 2. Check required fields that this response actually reached
   for (const q of questions) {
     if (!isAnswerableQuestion(q.type)) continue;
     if (!q.required) continue;
+    if (!reached.has(q.id)) continue;
     const value = answerMap.get(q.id);
     if (!value || !value.trim()) {
       errors.push(`Required question "${q.type}" is missing an answer`);
@@ -150,11 +171,28 @@ export function validateAnswers(
         break;
       }
 
+      case "SHORT_TEXT": {
+        if (props.format === "url" && !validateWebsite(value)) {
+          errors.push("Please enter a valid website URL");
+        }
+        break;
+      }
+
       case "MULTIPLE_CHOICE":
       case "DROPDOWN": {
         const choices: string[] = props.choices ?? props.options ?? [];
-        if (choices.length > 0 && !choices.includes(value)) {
-          errors.push(`Answer must be one of the available choices`);
+        const result = props.ranking
+          ? validateRankingAnswer(value, choices)
+          : validateChoiceSelections(value, {
+              choices,
+              allowMultiple:
+                q.type === "MULTIPLE_CHOICE" && props.allowMultiple === true,
+              minSelections: props.minSelections,
+              maxSelections: props.maxSelections,
+              allowOther: props.allowOther === true,
+            });
+        if (!result.valid) {
+          errors.push(result.error || "Answer must be one of the available choices");
         }
         break;
       }
@@ -210,8 +248,8 @@ export const questionSchema = z.object({
     "STATEMENT",
     "THANK_YOU_SCREEN",
   ]),
-  title: z.string().max(500),
-  description: z.string().max(1000).optional(),
+  title: z.string().max(500).default(""),
+  description: z.string().max(5000).optional(),
   required: z.boolean().optional(),
   properties: z.record(z.any()).optional(),
   logic: z
