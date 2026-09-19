@@ -36,7 +36,7 @@ export async function sendVerificationEmail(
 
   const verifyUrl = `${env.NEXT_PUBLIC_APP_URL}/api/auth/verify-email?token=${token}`;
 
-  await client.emails.send({
+  const result = await client.emails.send({
     from: getEmailFrom(),
     to:
       process.env.NODE_ENV === "development" ? "delivered@resend.dev" : email,
@@ -48,4 +48,8 @@ export async function sendVerificationEmail(
       siteName: siteConfig.name,
     }),
   });
+
+  if (result.error) {
+    console.error("[email] verification send failed", result.error.message);
+  }
 }
