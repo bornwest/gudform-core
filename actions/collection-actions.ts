@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { ensureDefaultCollection } from "@/lib/collections";
+import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 // ─── List ────────────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ export async function getCollectionById(collectionId: string) {
     include: {
       forms: {
         include: {
-          _count: { select: { responses: true, questions: true } },
+          _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE }, questions: true } },
         },
         orderBy: { updatedAt: "desc" },
       },

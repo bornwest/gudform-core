@@ -7,6 +7,9 @@ import { TeamRole } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
+import { getEffectivePlanConfig } from "@/lib/subscription";
+import { sendTeamInviteEmail } from "@/lib/team-invite-mail";
+import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 function generateTeamSlug(name: string): string {
   return (
@@ -22,6 +25,12 @@ function generateTeamSlug(name: string): string {
 export async function createTeam(name: string) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
+
+  // Check plan allows teams
+  const planConfig = await getEffectivePlanConfig(user.id);
+  if (planConfig.features.maxTeamMembers === 0) {
+    throw new Error("Your plan does not support teams. Upgrade to Pro or Business to create teams.");
+  }
 
   const team = await prisma.team.create({
     data: {
@@ -74,7 +83,7 @@ export async function getTeamById(teamId: string) {
         orderBy: { joinedAt: "asc" },
       },
       forms: {
-        include: { _count: { select: { responses: true } } },
+        include: { _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE } } } },
         orderBy: { updatedAt: "desc" },
       },
       collectionTeams: {
@@ -130,13 +139,23 @@ export async function inviteToTeam(
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!normalizedEmail) throw new Error("Email is required");
+
   const member = await prisma.teamMember.findFirst({
     where: { teamId, userId: user.id, role: { in: [TeamRole.OWNER, TeamRole.ADMIN] } },
   });
   if (!member) throw new Error("Permission denied");
 
-  // Check if already a member
-  const existingUser = await prisma.user.findUnique({ where: { email } });
+  const team = await prisma.team.findUnique({
+    where: { id: teamId },
+    select: { name: true },
+  });
+  if (!team) throw new Error("Team not found");
+
+  const existingUser = await prisma.user.findUnique({
+    where: { email: normalizedEmail },
+  });
   if (existingUser) {
     const existingMember = await prisma.teamMember.findUnique({
       where: { teamId_userId: { teamId, userId: existingUser.id } },
@@ -144,9 +163,8 @@ export async function inviteToTeam(
     if (existingMember) throw new Error("User is already a member");
   }
 
-  // Check for existing invite
   const existingInvite = await prisma.teamInvite.findFirst({
-    where: { teamId, email },
+    where: { teamId, email: normalizedEmail },
   });
   if (existingInvite) {
     await prisma.teamInvite.delete({ where: { id: existingInvite.id } });
@@ -155,21 +173,54 @@ export async function inviteToTeam(
   const invite = await prisma.teamInvite.create({
     data: {
       teamId,
-      email,
+      email: normalizedEmail,
       role,
       token: crypto.randomUUID(),
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     },
   });
 
+  let emailSent = false;
+  try {
+    emailSent = await sendTeamInviteEmail({
+      to: normalizedEmail,
+      teamName: team.name,
+      inviterName: user.name || user.email || "A teammate",
+      token: invite.token,
+    });
+  } catch (error) {
+    console.error("Failed to send team invite email", error);
+  }
+
   revalidatePath(`/dashboard/teams/${teamId}`);
-  return invite;
+  return { ...invite, emailSent };
 }
 
-export async function acceptInvite(token: string) {
-  const user = await getCurrentUser();
-  if (!user?.id || !user.email) throw new Error("Unauthorized");
+export async function getInvitePreview(token: string) {
+  const invite = await prisma.teamInvite.findUnique({
+    where: { token },
+    include: { team: { select: { name: true } } },
+  });
 
+  if (!invite) return { status: "invalid" as const };
+  if (invite.expiresAt < new Date()) {
+    return { status: "expired" as const };
+  }
+
+  return {
+    status: "ok" as const,
+    email: invite.email,
+    teamName: invite.team.name,
+    role: invite.role,
+    expiresAt: invite.expiresAt,
+  };
+}
+
+export async function acceptInviteForUser(
+  userId: string,
+  email: string,
+  token: string,
+) {
   const invite = await prisma.teamInvite.findUnique({
     where: { token },
   });
@@ -180,20 +231,25 @@ export async function acceptInvite(token: string) {
     throw new Error("Invite has expired");
   }
 
-  // Check if already a member
+  if (email.toLowerCase() !== invite.email.toLowerCase()) {
+    throw new Error(
+      `This invitation was sent to ${invite.email}. Use that email to join.`,
+    );
+  }
+
   const existing = await prisma.teamMember.findUnique({
-    where: { teamId_userId: { teamId: invite.teamId, userId: user.id } },
+    where: { teamId_userId: { teamId: invite.teamId, userId } },
   });
   if (existing) {
     await prisma.teamInvite.delete({ where: { id: invite.id } });
-    throw new Error("You are already a member of this team");
+    return invite.teamId;
   }
 
   await prisma.$transaction([
     prisma.teamMember.create({
       data: {
         teamId: invite.teamId,
-        userId: user.id,
+        userId,
         role: invite.role,
       },
     }),
@@ -202,6 +258,14 @@ export async function acceptInvite(token: string) {
 
   revalidatePath("/dashboard/teams");
   return invite.teamId;
+}
+
+export async function acceptInvite(token: string) {
+  const user = await getCurrentUser();
+  if (!user?.id || !user.email) {
+    throw new Error("Sign in to accept this invitation.");
+  }
+  return acceptInviteForUser(user.id, user.email, token);
 }
 
 export async function removeMember(teamId: string, userId: string) {
@@ -265,7 +329,7 @@ export async function getTeamForms(teamId: string) {
   return prisma.form.findMany({
     where: { teamId },
     include: {
-      _count: { select: { responses: true, questions: true } },
+      _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE }, questions: true } },
       user: { select: { name: true, image: true } },
     },
     orderBy: { updatedAt: "desc" },
