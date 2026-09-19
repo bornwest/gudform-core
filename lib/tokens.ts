@@ -1,9 +1,9 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { getAppOrigin } from "@/lib/app-origin";
 import { getEmailFrom, getResend } from "@/lib/email";
 import { siteConfig } from "@/config/site";
-import { env } from "@/env.mjs";
 import MagicLinkEmail from "@/emails/magic-link-email";
 
 export async function generateVerificationToken(email: string) {
@@ -30,14 +30,13 @@ export async function sendVerificationEmail(
   email: string,
   name: string,
   token: string,
-) {
+): Promise<{ ok: boolean; error?: string }> {
   const client = getResend();
-  if (!client) return;
+  if (!client) return { ok: false, error: "Email is not configured" };
 
-  const verifyUrl = `${env.NEXT_PUBLIC_APP_URL}/api/auth/verify-email?token=${token}`;
+  const verifyUrl = `${await getAppOrigin()}/api/auth/verify-email?token=${token}`;
 
-  const result = await client.emails.send({
-    from: getEmailFrom(),
+  const payload = {
     to:
       process.env.NODE_ENV === "development" ? "delivered@resend.dev" : email,
     subject: `Verify your email for ${siteConfig.name}`,
@@ -47,9 +46,32 @@ export async function sendVerificationEmail(
       mailType: "register",
       siteName: siteConfig.name,
     }),
+  };
+
+  let result = await client.emails.send({
+    from: getEmailFrom(),
+    ...payload,
   });
+
+  if (
+    result.error &&
+    /not authorized to send/i.test(result.error.message || "")
+  ) {
+    console.error(
+      "[email] RESEND_FROM rejected; retrying Resend sandbox from",
+      result.error.message,
+    );
+    result = await client.emails.send({
+      from: "GudForm <onboarding@resend.dev>",
+      ...payload,
+    });
+  }
 
   if (result.error) {
     console.error("[email] verification send failed", result.error.message);
+    return { ok: false, error: result.error.message };
   }
+
+  console.info("[email] verification sent", result.data?.id ?? "ok");
+  return { ok: true };
 }

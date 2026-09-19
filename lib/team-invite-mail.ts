@@ -1,6 +1,6 @@
+import { getAppOrigin } from "@/lib/app-origin";
 import { getEmailFrom, getResend } from "@/lib/email";
 import { escapeHtml } from "@/lib/html-escape";
-import { env } from "@/env.mjs";
 import { siteConfig } from "@/config/site";
 import { isEmailConfigured } from "@/lib/mailer";
 
@@ -15,7 +15,7 @@ export async function sendTeamInviteEmail(opts: {
   const client = getResend();
   if (!client) return false;
 
-  const inviteUrl = `${env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "")}/invite/${opts.token}`;
+  const inviteUrl = `${await getAppOrigin()}/invite/${opts.token}`;
   const safeTeam = escapeHtml(opts.teamName);
   const safeInviter = escapeHtml(opts.inviterName);
   const safeUrl = escapeHtml(inviteUrl);

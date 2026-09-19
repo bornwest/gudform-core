@@ -100,7 +100,32 @@ export async function register(values: {
 
   if (isEmailConfigured()) {
     const verificationToken = await generateVerificationToken(normalizedEmail);
-    await sendVerificationEmail(normalizedEmail, name, verificationToken.token);
+    const sent = await sendVerificationEmail(
+      normalizedEmail,
+      name,
+      verificationToken.token,
+    );
+    if (!sent.ok) {
+      // Preview DBs are separate from production and often cannot send mail
+      // (wrong Resend domain on the API key). Unlock the account so the
+      // hosted preview can still be walked. Production keeps the verify gate.
+      if (process.env.VERCEL_ENV === "preview") {
+        await prisma.user.update({
+          where: { id: newUser.id },
+          data: { emailVerified: new Date() },
+        });
+        return {
+          success:
+            "Account created. Verification email could not be sent on this preview, so you can sign in now.",
+          autoVerified: true,
+        };
+      }
+      return {
+        error:
+          sent.error ||
+          "Account created, but the verification email could not be sent. Try again in a few minutes.",
+      };
+    }
     return { success: "Verification email sent! Check your inbox." };
   }
 
