@@ -1,8 +1,7 @@
 #!/bin/sh
 set -e
 
-# Run Prisma migrations on startup
-echo "Running database migrations..."
-npx prisma db push --skip-generate 2>/dev/null || echo "Migration skipped (database may not be ready yet)"
-
-exec "$@"
+echo "Applying database schema..."
+node node_modules/prisma/build/index.js db push --schema=prisma/schema.prisma --skip-generate
+echo "Starting GudForm..."
+exec node server.js
