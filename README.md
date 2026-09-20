@@ -6,6 +6,22 @@ Website: [gudform.com](https://gudform.com) · OSS repo: [gudlab/gudform-core](h
 
 If this is useful, **[star the public repo](https://github.com/gudlab/gudform-core)** — that's the open-source edition. Issues and OSS PRs belong there, not on the private SaaS copy.
 
+<p align="center">
+  <a href="https://www.gudform.com">
+    <img src="docs/assets/gudform-hero.svg" alt="GudForm homepage" width="800" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://www.gudform.com">
+    <img src="docs/assets/gudform-tour.svg" alt="GudForm product tour" width="800" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://www.gudform.com">Watch the full reel on gudform.com</a>
+</p>
+
 ## Hosted vs self-host
 
 | | Hosted SaaS | OSS / self-host |
