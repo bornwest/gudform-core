@@ -131,10 +131,10 @@ export default function AdminUsersPage() {
             <thead>
               <tr className="border-b bg-muted/50">
                 <th className="px-4 py-3 text-left font-medium">User</th>
-                <th className="px-4 py-3 text-left font-medium">Plan</th>
+                <th className="px-4 py-3 text-left font-medium">Role</th>
                 <th className="px-4 py-3 text-left font-medium">Forms</th>
                 <th className="px-4 py-3 text-left font-medium">Joined</th>
-                <th className="px-4 py-3 text-left font-medium">Period End</th>
+                <th className="px-4 py-3 text-left font-medium">Last Login</th>
                 <th className="px-4 py-3 text-right font-medium">Actions</th>
               </tr>
             </thead>
@@ -158,54 +158,35 @@ export default function AdminUsersPage() {
                       <div>
                         <p className="font-medium">
                           {u.name || "Unnamed"}
-                          {u.role === "ADMIN" && (
-                            <span className="ml-1.5 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">
-                              ADMIN
-                            </span>
-                          )}
                         </p>
                         <p className="text-muted-foreground">{u.email}</p>
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <PlanBadge plan={u.subscription?.plan || "FREE"} />
+                      {u.role === "ADMIN" && (
+                        <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                          ADMIN
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">{u._count.forms}</td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {formatDate(u.createdAt.toISOString())}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {u.subscription?.stripeCurrentPeriodEnd
-                        ? formatDate(
-                            u.subscription.stripeCurrentPeriodEnd.toISOString(),
-                          )
-                        : "—"}
+                      TBD
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <Button
                           size="sm"
-                          variant="outline"
-                          onClick={() => {
-                            setGiftUser(u);
-                            setGiftPlan(SubscriptionPlan.PRO);
-                          }}
+                          variant="ghost"
+                          className="text-destructive"
+                          onClick={() => handleRevoke(u)}
+                          disabled={isPending}
                         >
-                          <Gift className="mr-1 size-3" />
-                          Gift
+                          Revoke
                         </Button>
-                        {u.subscription &&
-                          u.subscription.plan !== "FREE" && (
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-destructive"
-                              onClick={() => handleRevoke(u)}
-                              disabled={isPending}
-                            >
-                              Revoke
-                            </Button>
-                          )}
                       </div>
                     </td>
                   </tr>
