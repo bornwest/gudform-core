@@ -14,12 +14,7 @@ export const sidebarLinks: SidebarNavItem[] = [
         icon: "laptop",
         title: "Admin Panel",
         authorizeOnly: UserRole.ADMIN,
-      },
-      {
-        href: "/admin/users",
-        icon: "users",
-        title: "Manage Users",
-        authorizeOnly: UserRole.ADMIN,
+        saasOnly: true,
       },
       {
         href: "/admin/integrations",
@@ -33,13 +28,20 @@ export const sidebarLinks: SidebarNavItem[] = [
         icon: "layout",
         title: "Review Templates",
         authorizeOnly: UserRole.ADMIN,
+        saasOnly: true,
       },
     ],
   },
   {
     title: "OPTIONS",
     items: [
-      { href: "/dashboard/templates", icon: "layout", title: "Templates" },
+      {
+        href: "/admin/users",
+        icon: "users",
+        title: "Users",
+        authorizeOnly: UserRole.ADMIN,
+      },
+      { href: "/dashboard/templates", icon: "layout", title: "Templates", saasOnly: true },
       {
         href: "/dashboard/integrations",
         icon: "laptop",
@@ -60,9 +62,9 @@ export const sidebarLinks: SidebarNavItem[] = [
         saasOnly: true,
       },
       { href: "/dashboard/settings/api-keys", icon: "key", title: "API Keys" },
-      { href: "/dashboard/settings/storage", icon: "hardDrive", title: "Storage" },
+      { href: "/dashboard/settings/storage", icon: "hardDrive", title: "Storage", saasOnly: true },
       { href: "/dashboard/settings", icon: "settings", title: "Settings" },
-      { href: "/", icon: "home", title: "Homepage" },
+      { href: "/", icon: "home", title: "Homepage", saasOnly: true },
     ],
   },
 ];
