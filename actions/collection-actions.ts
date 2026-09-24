@@ -2,10 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
-import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
 import { ensureDefaultCollection } from "@/lib/collections";
+import { prisma } from "@/lib/db";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
+import { getCurrentUser } from "@/lib/session";
 
 // ─── List ────────────────────────────────────────────────────────────────────
 
@@ -17,7 +17,14 @@ export async function getUserCollections() {
   await ensureDefaultCollection(user.id);
 
   return prisma.collection.findMany({
-    where: { userId: user.id },
+    where: {
+      OR: [
+        { userId: user.id },
+        {
+          teams: { some: { team: { members: { some: { userId: user.id } } } } },
+        },
+      ],
+    },
     include: {
       _count: {
         select: { forms: true, teams: true },
@@ -34,11 +41,24 @@ export async function getCollectionById(collectionId: string) {
   if (!user?.id) throw new Error("Unauthorized");
 
   return prisma.collection.findFirst({
-    where: { id: collectionId, userId: user.id },
+    where: {
+      id: collectionId,
+      OR: [
+        { userId: user.id },
+        {
+          teams: { some: { team: { members: { some: { userId: user.id } } } } },
+        },
+      ],
+    },
     include: {
       forms: {
         include: {
-          _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE }, questions: true } },
+          _count: {
+            select: {
+              responses: { where: COUNTABLE_RESPONSE_WHERE },
+              questions: true,
+            },
+          },
         },
         orderBy: { updatedAt: "desc" },
       },
@@ -113,8 +133,7 @@ export async function deleteCollection(collectionId: string) {
     where: { id: collectionId, userId: user.id },
   });
   if (!collection) throw new Error("Collection not found");
-  if (collection.isDefault)
-    throw new Error("Cannot delete default collection");
+  if (collection.isDefault) throw new Error("Cannot delete default collection");
 
   // Move orphaned forms back to default collection
   const defaultCollection = await ensureDefaultCollection(user.id);
@@ -238,8 +257,7 @@ export async function toggleTeamAccessAllCollections(
       role: { in: ["OWNER", "ADMIN"] },
     },
   });
-  if (!membership)
-    throw new Error("You must be a team owner or admin");
+  if (!membership) throw new Error("You must be a team owner or admin");
 
   await prisma.team.update({
     where: { id: teamId },

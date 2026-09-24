@@ -1,18 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { FormStatus, FormThemeMode, Prisma, QuestionType } from "@prisma/client";
+import {
+  FormStatus,
+  FormThemeMode,
+  Prisma,
+  QuestionType,
+} from "@prisma/client";
 
-import { prisma } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
-import { generateSlug } from "@/lib/utils";
+import { getCurrency } from "@/config/currencies";
+import { isSaasEdition } from "@/config/edition";
 import {
   ensureDefaultCollection,
   getAccessibleFormIdsForTeamMember,
 } from "@/lib/collections";
-import { getCurrency } from "@/config/currencies";
-import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
-import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
+import { prisma } from "@/lib/db";
 import {
   createCompletedFormResponse,
   createPendingPaymentResponse,
@@ -20,10 +22,13 @@ import {
   upsertFormDraft,
   type FormResponseMetadata,
 } from "@/lib/form-response";
-import { requireTurnstileForPublicSubmit } from "@/lib/turnstile";
-import { getEffectivePlanConfig } from "@/lib/subscription";
 import { assertPlanFeature } from "@/lib/plan-gates";
-import { isSaasEdition } from "@/config/edition";
+import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
+import { getCurrentUser } from "@/lib/session";
+import { getEffectivePlanConfig } from "@/lib/subscription";
+import { requireTurnstileForPublicSubmit } from "@/lib/turnstile";
+import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
+import { generateSlug } from "@/lib/utils";
 
 function formOwnerSelect() {
   // Hosted billing relations are stripped from the public Prisma schema.
@@ -114,7 +119,11 @@ export async function getUserForms(collectionId?: string) {
   // Lazy init — ensure default collection exists
   await ensureDefaultCollection(user.id);
 
-  const where: any = { userId: user.id };
+  const accessibleIds = await getAccessibleFormIdsForTeamMember(user.id);
+
+  const where: any = {
+    OR: [{ userId: user.id }, { id: { in: accessibleIds } }],
+  };
   if (collectionId) {
     where.collectionId = collectionId;
   }
@@ -144,9 +153,9 @@ export async function getFormById(formId: string) {
   let form = await prisma.form.findFirst({
     where: { id: formId, userId: user.id },
     include: {
-      questions: { 
+      questions: {
         where: { deletedAt: null },
-        orderBy: { order: "asc" } 
+        orderBy: { order: "asc" },
       },
       _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE } } },
       user: {
@@ -162,11 +171,13 @@ export async function getFormById(formId: string) {
       form = await prisma.form.findFirst({
         where: { id: formId },
         include: {
-          questions: { 
+          questions: {
             where: { deletedAt: null },
-            orderBy: { order: "asc" } 
+            orderBy: { order: "asc" },
           },
-          _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE } } },
+          _count: {
+            select: { responses: { where: COUNTABLE_RESPONSE_WHERE } },
+          },
           user: {
             select: formOwnerSelect(),
           },
@@ -283,11 +294,11 @@ export async function duplicateForm(formId: string) {
 
   const original = await prisma.form.findFirst({
     where: { id: formId, userId: user.id },
-    include: { 
-      questions: { 
+    include: {
+      questions: {
         where: { deletedAt: null },
-        orderBy: { order: "asc" } 
-      } 
+        orderBy: { order: "asc" },
+      },
     },
   });
   if (!original) throw new Error("Form not found");
@@ -381,7 +392,9 @@ export async function saveQuestions(
     );
 
     // Soft-delete questions that were removed by the user
-    const idsToDelete = Array.from(existingIds).filter((id) => !incomingIds.has(id));
+    const idsToDelete = Array.from(existingIds).filter(
+      (id) => !incomingIds.has(id),
+    );
     if (idsToDelete.length > 0) {
       await tx.question.updateMany({
         where: { id: { in: idsToDelete } },
@@ -478,7 +491,7 @@ async function saveDraftQuestions(
 }
 
 type VersionChange = {
-  type: 'add' | 'remove' | 'modify' | 'reorder';
+  type: "add" | "remove" | "modify" | "reorder";
   questionId: string;
   details?: string;
 };
@@ -501,7 +514,7 @@ async function createFormVersion(
   // Get the next version number
   const latestVersion = await tx.formVersion.findFirst({
     where: { formId },
-    orderBy: { versionNumber: 'desc' },
+    orderBy: { versionNumber: "desc" },
     select: { versionNumber: true },
   });
 
@@ -547,7 +560,7 @@ function classifyChanges(
   const oldMap = new Map(oldQuestions.map((q) => [q.id, q]));
   const newMap = new Map(
     newQuestions
-      .filter((q) => !q.id.startsWith('draft_'))
+      .filter((q) => !q.id.startsWith("draft_"))
       .map((q) => [q.id, q]),
   );
 
@@ -555,7 +568,7 @@ function classifyChanges(
   for (const [id, oldQ] of Array.from(oldMap.entries())) {
     if (!newMap.has(id)) {
       changes.push({
-        type: 'remove',
+        type: "remove",
         questionId: id,
         details: `Removed: "${oldQ.title}"`,
       });
@@ -565,9 +578,9 @@ function classifyChanges(
 
   // Check for new questions
   for (const newQ of newQuestions) {
-    if (newQ.id.startsWith('draft_')) {
+    if (newQ.id.startsWith("draft_")) {
       changes.push({
-        type: 'add',
+        type: "add",
         questionId: newQ.id,
         details: `Added: "${newQ.title}"`,
       });
@@ -586,7 +599,7 @@ function classifyChanges(
     // Type change is breaking
     if (oldQ.type !== newQ.type) {
       changes.push({
-        type: 'modify',
+        type: "modify",
         questionId: id,
         details: `Type changed from ${oldQ.type} to ${newQ.type}`,
       });
@@ -596,16 +609,16 @@ function classifyChanges(
     // Making a question required is breaking
     if (!oldQ.required && newQ.required) {
       changes.push({
-        type: 'modify',
+        type: "modify",
         questionId: id,
-        details: 'Made required',
+        details: "Made required",
       });
       isBreaking = true;
     }
 
     // Check for removed options in multiple choice (breaking)
     if (
-      (oldQ.type === 'MULTIPLE_CHOICE' || oldQ.type === 'DROPDOWN') &&
+      (oldQ.type === "MULTIPLE_CHOICE" || oldQ.type === "DROPDOWN") &&
       oldQ.properties?.options &&
       newQ.properties?.options
     ) {
@@ -621,9 +634,9 @@ function classifyChanges(
 
       if (removedOptions.length > 0) {
         changes.push({
-          type: 'modify',
+          type: "modify",
           questionId: id,
-          details: `Removed options: ${removedOptions.join(', ')}`,
+          details: `Removed options: ${removedOptions.join(", ")}`,
         });
         isBreaking = true;
       }
@@ -632,7 +645,7 @@ function classifyChanges(
     // Order change (not breaking)
     if (oldQ.order !== newQ.order) {
       changes.push({
-        type: 'reorder',
+        type: "reorder",
         questionId: id,
         details: `Moved from position ${oldQ.order} to ${newQ.order}`,
       });
@@ -641,16 +654,17 @@ function classifyChanges(
     // Title change (not breaking)
     if (oldQ.title !== newQ.title) {
       changes.push({
-        type: 'modify',
+        type: "modify",
         questionId: id,
         details: `Renamed from "${oldQ.title}" to "${newQ.title}"`,
       });
     }
   }
 
-  const summary = changes.length > 0
-    ? changes.map((c) => c.details || c.type).join('; ')
-    : 'No changes';
+  const summary =
+    changes.length > 0
+      ? changes.map((c) => c.details || c.type).join("; ")
+      : "No changes";
 
   return { isBreaking, changes, summary };
 }
@@ -670,11 +684,11 @@ export async function publishDraftQuestions(formId: string): Promise<{
 
   const form = await prisma.form.findFirst({
     where: { id: formId, userId: user.id },
-    include: { 
-      questions: { 
+    include: {
+      questions: {
         where: { deletedAt: null },
-        orderBy: { order: 'asc' },
-      } 
+        orderBy: { order: "asc" },
+      },
     },
   });
   if (!form) throw new Error("Form not found");
@@ -743,7 +757,7 @@ export async function publishDraftQuestions(formId: string): Promise<{
     // Get all questions with real IDs for the version snapshot
     const finalQuestions = await tx.question.findMany({
       where: { formId, deletedAt: null },
-      orderBy: { order: 'asc' },
+      orderBy: { order: "asc" },
     });
 
     // Create immutable version snapshot
@@ -765,7 +779,7 @@ export async function publishDraftQuestions(formId: string): Promise<{
 
   revalidatePath(`/dashboard/forms/${formId}`);
   revalidatePath(`/f/${form.slug}`);
-  
+
   return {
     versionId: result.versionId,
     isBreaking: result.classification.isBreaking,
@@ -801,9 +815,9 @@ export async function getPreviewForm(slug: string) {
   const form = await prisma.form.findFirst({
     where: { slug, userId: user.id },
     include: {
-      questions: { 
+      questions: {
         where: { deletedAt: null },
-        orderBy: { order: "asc" } 
+        orderBy: { order: "asc" },
       },
     },
   });
@@ -839,9 +853,9 @@ export async function getPublicForm(slug: string) {
   const form = await prisma.form.findFirst({
     where: { slug, status: "PUBLISHED" },
     include: {
-      questions: { 
+      questions: {
         where: { deletedAt: null },
-        orderBy: { order: "asc" } 
+        orderBy: { order: "asc" },
       },
     },
   });
@@ -921,9 +935,9 @@ export async function getFormResponses(formId: string) {
         include: { question: true },
       },
       formVersion: {
-        select: { 
-          id: true, 
-          versionNumber: true, 
+        select: {
+          id: true,
+          versionNumber: true,
           snapshot: true,
           createdAt: true,
         },
@@ -961,7 +975,8 @@ export async function getFormResponses(formId: string) {
             // Use historical labels from version if available
             title: versionQuestion?.title ?? answer.question.title,
             type: versionQuestion?.type ?? answer.question.type,
-            properties: versionQuestion?.properties ?? answer.question.properties,
+            properties:
+              versionQuestion?.properties ?? answer.question.properties,
           },
         };
       }),
@@ -976,11 +991,11 @@ export async function getFormAnalytics(formId: string) {
   // Check direct ownership or team access via collections
   let form = await prisma.form.findFirst({
     where: { id: formId, userId: user.id },
-    include: { 
-      questions: { 
+    include: {
+      questions: {
         where: { deletedAt: null },
-        orderBy: { order: "asc" } 
-      } 
+        orderBy: { order: "asc" },
+      },
     },
   });
   if (!form) {
@@ -988,11 +1003,11 @@ export async function getFormAnalytics(formId: string) {
     if (accessibleIds.includes(formId)) {
       form = await prisma.form.findFirst({
         where: { id: formId },
-        include: { 
-          questions: { 
+        include: {
+          questions: {
             where: { deletedAt: null },
-            orderBy: { order: "asc" } 
-          } 
+            orderBy: { order: "asc" },
+          },
         },
       });
     }
