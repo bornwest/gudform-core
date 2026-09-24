@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ChevronsUpDown, FolderOpen, Plus } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -28,6 +29,7 @@ export default function ProjectSwitcher({
   const [collections, setCollections] = useState<CollectionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [openPopover, setOpenPopover] = useState(false);
+  const pathname = usePathname();
 
   useEffect(() => {
     getUserCollections().then((data) => {
@@ -40,8 +42,11 @@ export default function ProjectSwitcher({
     return <ProjectSwitcherPlaceholder />;
   }
 
-  const defaultCollection = collections.find((c) => c.isDefault);
-  const displayName = defaultCollection?.name || "My Forms";
+  const activeCollectionId = pathname?.match(
+    /^\/dashboard\/collections\/([^/]+)/,
+  )?.[1];
+  const activeCollection = collections.find((c) => c.id === activeCollectionId);
+  const displayName = activeCollection?.name || "My Forms";
 
   return (
     <div>
