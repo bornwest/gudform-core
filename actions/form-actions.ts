@@ -6,13 +6,15 @@ import { FormStatus, FormThemeMode, Prisma, QuestionType } from "@prisma/client"
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { generateSlug } from "@/lib/utils";
-import {
-  ensureDefaultCollection,
-  getAccessibleFormIdsForTeamMember,
-} from "@/lib/collections";
+import { ensureDefaultCollection } from "@/lib/collections";
 import { getCurrency } from "@/config/currencies";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
+import {
+  editableFormsWhere,
+  OWNER_ONLY_FORM_FIELDS,
+  sharedFormsWhere,
+} from "@/lib/form-access";
 import {
   createCompletedFormResponse,
   createPendingPaymentResponse,
@@ -136,13 +138,37 @@ export async function getUserForms(collectionId?: string) {
   });
 }
 
+export async function getSharedForms() {
+  const user = await getCurrentUser();
+  if (!user?.id) throw new Error("Unauthorized");
+
+  return prisma.form.findMany({
+    where: { ...sharedFormsWhere(user.id), userId: { not: user.id } },
+    // Only what the dashboard card needs; never ship the owner's settings.
+    select: {
+      id: true,
+      title: true,
+      slug: true,
+      status: true,
+      updatedAt: true,
+      user: { select: { name: true, email: true } },
+      _count: {
+        select: {
+          responses: { where: COUNTABLE_RESPONSE_WHERE },
+          questions: true,
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
 export async function getFormById(formId: string) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  // First try direct ownership
-  let form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+  const form = await prisma.form.findFirst({
+    where: { id: formId, ...editableFormsWhere(user.id) },
     include: {
       questions: { 
         where: { deletedAt: null },
@@ -155,27 +181,14 @@ export async function getFormById(formId: string) {
     },
   });
 
-  // Fallback: check team access via collections
-  if (!form) {
-    const accessibleIds = await getAccessibleFormIdsForTeamMember(user.id);
-    if (accessibleIds.includes(formId)) {
-      form = await prisma.form.findFirst({
-        where: { id: formId },
-        include: {
-          questions: { 
-            where: { deletedAt: null },
-            orderBy: { order: "asc" } 
-          },
-          _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE } } },
-          user: {
-            select: formOwnerSelect(),
-          },
-        },
-      });
-    }
-  }
-
-  return form;
+  if (!form) return null;
+  // Team members can edit shared forms but not delete or move them.
+  const isOwner = form.userId === user.id;
+  return {
+    ...form,
+    webhookSecret: isOwner ? form.webhookSecret : null,
+    isOwner,
+  };
 }
 
 export async function updateForm(
@@ -211,9 +224,16 @@ export async function updateForm(
   if (!user?.id) throw new Error("Unauthorized");
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...editableFormsWhere(user.id) },
   });
   if (!form) throw new Error("Form not found");
+
+  if (
+    form.userId !== user.id &&
+    OWNER_ONLY_FORM_FIELDS.some((field) => data[field] !== undefined)
+  ) {
+    throw new Error("Only the form owner can change these settings");
+  }
 
   // Validate payment options if provided
   if (data.paymentOptions && data.paymentOptions.length > 0) {
@@ -238,7 +258,8 @@ export async function updateForm(
   if (data.webhookUrl === "") updateData.webhookUrl = null;
   if (data.webhookSecret === "") updateData.webhookSecret = null;
 
-  const plan = await getEffectivePlanConfig(user.id);
+  // Features follow the form owner's plan, not a team member's.
+  const plan = await getEffectivePlanConfig(form.userId);
   if (data.webhookUrl || data.webhookSecret) {
     assertPlanFeature(plan, "webhooks", "Webhooks");
   }
@@ -282,7 +303,7 @@ export async function duplicateForm(formId: string) {
   if (!user?.id) throw new Error("Unauthorized");
 
   const original = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...editableFormsWhere(user.id) },
     include: { 
       questions: { 
         where: { deletedAt: null },
@@ -291,6 +312,13 @@ export async function duplicateForm(formId: string) {
     },
   });
   if (!original) throw new Error("Form not found");
+
+  // A copy of a shared form belongs to the copier, so it can't stay in the
+  // owner's collection.
+  const collectionId =
+    original.userId === user.id
+      ? original.collectionId
+      : (await ensureDefaultCollection(user.id)).id;
 
   const MAX_SLUG_RETRIES = 3;
   let form;
@@ -302,7 +330,7 @@ export async function duplicateForm(formId: string) {
           description: original.description,
           slug: generateSlug(),
           userId: user.id,
-          collectionId: original.collectionId,
+          collectionId,
           themeColor: original.themeColor,
           backgroundColor: original.backgroundColor,
           showProgressBar: original.showProgressBar,
@@ -322,6 +350,16 @@ export async function duplicateForm(formId: string) {
               properties: q.properties as any,
               logic: q.logic as any,
             })),
+          },
+        },
+        // Same shape as getUserForms so the dashboard can insert it directly.
+        include: {
+          collection: { select: { id: true, name: true } },
+          _count: {
+            select: {
+              responses: { where: COUNTABLE_RESPONSE_WHERE },
+              questions: true,
+            },
           },
         },
       });
@@ -358,7 +396,7 @@ export async function saveQuestions(
   if (!user?.id) throw new Error("Unauthorized");
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...editableFormsWhere(user.id) },
   });
   if (!form) throw new Error("Form not found");
 
@@ -669,7 +707,7 @@ export async function publishDraftQuestions(formId: string): Promise<{
   if (!user?.id) throw new Error("Unauthorized");
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...editableFormsWhere(user.id) },
     include: { 
       questions: { 
         where: { deletedAt: null },
@@ -792,14 +830,14 @@ export async function recordFormView(
   }
 }
 
-// Preview form for authenticated owner (any status).
-// Uses draft questions if available so the owner can preview unpublished edits.
+// Preview form for anyone who can edit it (any status).
+// Uses draft questions if available so editors can preview unpublished edits.
 export async function getPreviewForm(slug: string) {
   const user = await getCurrentUser();
   if (!user?.id) return null;
 
   const form = await prisma.form.findFirst({
-    where: { slug, userId: user.id },
+    where: { slug, ...editableFormsWhere(user.id) },
     include: {
       questions: { 
         where: { deletedAt: null },
@@ -902,16 +940,10 @@ export async function getFormResponses(formId: string) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  // Check direct ownership or team access via collections
-  let form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+  const form = await prisma.form.findFirst({
+    where: { id: formId, ...editableFormsWhere(user.id) },
+    select: { id: true },
   });
-  if (!form) {
-    const accessibleIds = await getAccessibleFormIdsForTeamMember(user.id);
-    if (accessibleIds.includes(formId)) {
-      form = await prisma.form.findFirst({ where: { id: formId } });
-    }
-  }
   if (!form) throw new Error("Form not found");
 
   const responses = await prisma.formResponse.findMany({
@@ -973,9 +1005,8 @@ export async function getFormAnalytics(formId: string) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  // Check direct ownership or team access via collections
-  let form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+  const form = await prisma.form.findFirst({
+    where: { id: formId, ...editableFormsWhere(user.id) },
     include: { 
       questions: { 
         where: { deletedAt: null },
@@ -983,20 +1014,6 @@ export async function getFormAnalytics(formId: string) {
       } 
     },
   });
-  if (!form) {
-    const accessibleIds = await getAccessibleFormIdsForTeamMember(user.id);
-    if (accessibleIds.includes(formId)) {
-      form = await prisma.form.findFirst({
-        where: { id: formId },
-        include: { 
-          questions: { 
-            where: { deletedAt: null },
-            orderBy: { order: "asc" } 
-          } 
-        },
-      });
-    }
-  }
   if (!form) throw new Error("Form not found");
 
   // Run all aggregate queries in parallel (no full-table fetch)
