@@ -103,6 +103,7 @@ export default function FormResponsesPage() {
   const [formTitle, setFormTitle] = useState<string>("");
   const [formStatus, setFormStatus] = useState<string | null>(null);
   const [formCollectionId, setFormCollectionId] = useState<string | null>(null);
+  const [isOwner, setIsOwner] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -119,6 +120,7 @@ export default function FormResponsesPage() {
           setFormTitle(formData.title);
           setFormStatus(formData.status);
           setFormCollectionId(formData.collectionId);
+          setIsOwner(formData.isOwner);
         }
       } catch (error) {
         toast.error("Failed to load responses");
@@ -341,22 +343,28 @@ export default function FormResponsesPage() {
                   <DropdownMenuSeparator />
                 </>
               )}
-              <DropdownMenuItem onClick={() => setMoveFormDialogOpen(true)}>
-                <FolderOpen className="mr-2 size-4" />
-                Move to Collection
-              </DropdownMenuItem>
+              {isOwner && (
+                <DropdownMenuItem onClick={() => setMoveFormDialogOpen(true)}>
+                  <FolderOpen className="mr-2 size-4" />
+                  Move to Collection
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem onClick={handleDuplicate}>
                 <Copy className="mr-2 size-4" />
                 Duplicate
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                className="text-destructive"
-                onClick={handleDeleteForm}
-              >
-                <Trash2 className="mr-2 size-4" />
-                Delete Form
-              </DropdownMenuItem>
+              {isOwner && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={handleDeleteForm}
+                  >
+                    <Trash2 className="mr-2 size-4" />
+                    Delete Form
+                  </DropdownMenuItem>
+                </>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -538,7 +546,7 @@ export default function FormResponsesPage() {
                     response={response}
                     isExpanded={expandedId === response.id}
                     onToggle={() => toggleExpanded(response.id)}
-                    onDelete={() => handleDelete(response.id)}
+                    onDelete={isOwner ? () => handleDelete(response.id) : undefined}
                     isPending={isPending}
                   />
                 ))}
@@ -600,7 +608,8 @@ function ResponseRow({
   response: FormResponse;
   isExpanded: boolean;
   onToggle: () => void;
-  onDelete: () => void;
+  /** Owner-only; omitted for team members. */
+  onDelete?: () => void;
   isPending: boolean;
 }) {
   const isCompleted = !!response.completedAt;
@@ -677,18 +686,20 @@ function ResponseRow({
             >
               <Eye className="size-4" />
             </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="size-8 p-0 text-destructive hover:text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-              disabled={isPending}
-            >
-              <Trash2 className="size-4" />
-            </Button>
+            {onDelete && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="size-8 p-0 text-destructive hover:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+                disabled={isPending}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
           </div>
         </TableCell>
       </TableRow>

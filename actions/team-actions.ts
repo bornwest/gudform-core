@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/session";
 import { getEffectivePlanConfig } from "@/lib/subscription";
 import { sendTeamInviteEmail } from "@/lib/team-invite-mail";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
+import { teamFormsWhere } from "@/lib/form-access";
 
 function generateTeamSlug(name: string): string {
   return (
@@ -53,12 +54,12 @@ export async function getTeams() {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  return prisma.team.findMany({
+  const teams = await prisma.team.findMany({
     where: {
       members: { some: { userId: user.id } },
     },
     include: {
-      _count: { select: { members: true, forms: true } },
+      _count: { select: { members: true } },
       members: {
         where: { userId: user.id },
         select: { role: true },
@@ -66,6 +67,15 @@ export async function getTeams() {
     },
     orderBy: { createdAt: "desc" },
   });
+
+  const formCounts = await Promise.all(
+    teams.map((team) => prisma.form.count({ where: teamFormsWhere(team.id) })),
+  );
+
+  return teams.map((team, i) => ({
+    ...team,
+    _count: { ...team._count, forms: formCounts[i] },
+  }));
 }
 
 export async function getTeamById(teamId: string) {
@@ -82,10 +92,6 @@ export async function getTeamById(teamId: string) {
         include: { user: { select: { id: true, name: true, email: true, image: true } } },
         orderBy: { joinedAt: "asc" },
       },
-      forms: {
-        include: { _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE } } } },
-        orderBy: { updatedAt: "desc" },
-      },
       collectionTeams: {
         include: {
           collection: {
@@ -93,11 +99,22 @@ export async function getTeamById(teamId: string) {
           },
         },
       },
-      _count: { select: { members: true, forms: true } },
+      _count: { select: { members: true } },
     },
   });
+  if (!team) return null;
 
-  return team;
+  const forms = await prisma.form.findMany({
+    where: teamFormsWhere(teamId),
+    include: { _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE } } } },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  return {
+    ...team,
+    forms,
+    _count: { ...team._count, forms: forms.length },
+  };
 }
 
 export async function updateTeam(teamId: string, data: { name?: string }) {
@@ -327,7 +344,7 @@ export async function getTeamForms(teamId: string) {
   if (!member) throw new Error("Not a member of this team");
 
   return prisma.form.findMany({
-    where: { teamId },
+    where: teamFormsWhere(teamId),
     include: {
       _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE }, questions: true } },
       user: { select: { name: true, image: true } },

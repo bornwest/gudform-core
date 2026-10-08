@@ -13,6 +13,7 @@ import {
 import { getCurrency } from "@/config/currencies";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
+import { editableFormsWhere, sharedFormsWhere } from "@/lib/form-access";
 import {
   createCompletedFormResponse,
   createPendingPaymentResponse,
@@ -136,6 +137,25 @@ export async function getUserForms(collectionId?: string) {
   });
 }
 
+export async function getSharedForms() {
+  const user = await getCurrentUser();
+  if (!user?.id) throw new Error("Unauthorized");
+
+  return prisma.form.findMany({
+    where: { ...sharedFormsWhere(user.id), userId: { not: user.id } },
+    include: {
+      user: { select: { name: true, email: true } },
+      _count: {
+        select: {
+          responses: { where: COUNTABLE_RESPONSE_WHERE },
+          questions: true,
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+}
+
 export async function getFormById(formId: string) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
@@ -175,7 +195,9 @@ export async function getFormById(formId: string) {
     }
   }
 
-  return form;
+  if (!form) return null;
+  // Team members can edit shared forms but not delete or move them.
+  return { ...form, isOwner: form.userId === user.id };
 }
 
 export async function updateForm(
@@ -211,7 +233,7 @@ export async function updateForm(
   if (!user?.id) throw new Error("Unauthorized");
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...editableFormsWhere(user.id) },
   });
   if (!form) throw new Error("Form not found");
 
@@ -238,7 +260,8 @@ export async function updateForm(
   if (data.webhookUrl === "") updateData.webhookUrl = null;
   if (data.webhookSecret === "") updateData.webhookSecret = null;
 
-  const plan = await getEffectivePlanConfig(user.id);
+  // Features follow the form owner's plan, not a team member's.
+  const plan = await getEffectivePlanConfig(form.userId);
   if (data.webhookUrl || data.webhookSecret) {
     assertPlanFeature(plan, "webhooks", "Webhooks");
   }
@@ -282,7 +305,7 @@ export async function duplicateForm(formId: string) {
   if (!user?.id) throw new Error("Unauthorized");
 
   const original = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...editableFormsWhere(user.id) },
     include: { 
       questions: { 
         where: { deletedAt: null },
@@ -291,6 +314,13 @@ export async function duplicateForm(formId: string) {
     },
   });
   if (!original) throw new Error("Form not found");
+
+  // A copy of a shared form belongs to the copier, so it can't stay in the
+  // owner's collection.
+  const collectionId =
+    original.userId === user.id
+      ? original.collectionId
+      : (await ensureDefaultCollection(user.id)).id;
 
   const MAX_SLUG_RETRIES = 3;
   let form;
@@ -302,7 +332,7 @@ export async function duplicateForm(formId: string) {
           description: original.description,
           slug: generateSlug(),
           userId: user.id,
-          collectionId: original.collectionId,
+          collectionId,
           themeColor: original.themeColor,
           backgroundColor: original.backgroundColor,
           showProgressBar: original.showProgressBar,
@@ -322,6 +352,16 @@ export async function duplicateForm(formId: string) {
               properties: q.properties as any,
               logic: q.logic as any,
             })),
+          },
+        },
+        // Same shape as getUserForms so the dashboard can insert it directly.
+        include: {
+          collection: { select: { id: true, name: true } },
+          _count: {
+            select: {
+              responses: { where: COUNTABLE_RESPONSE_WHERE },
+              questions: true,
+            },
           },
         },
       });
@@ -358,7 +398,7 @@ export async function saveQuestions(
   if (!user?.id) throw new Error("Unauthorized");
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...editableFormsWhere(user.id) },
   });
   if (!form) throw new Error("Form not found");
 
@@ -669,7 +709,7 @@ export async function publishDraftQuestions(formId: string): Promise<{
   if (!user?.id) throw new Error("Unauthorized");
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...editableFormsWhere(user.id) },
     include: { 
       questions: { 
         where: { deletedAt: null },
