@@ -4,7 +4,6 @@ import { prisma } from "@/lib/db";
 import { getEmailFrom, getResend } from "@/lib/email";
 import { escapeHtml } from "@/lib/html-escape";
 import { getCurrentUser } from "@/lib/session";
-import { editableFormsWhere } from "@/lib/form-access";
 
 export async function sendFormByEmail(
   formId: string,
@@ -15,7 +14,7 @@ export async function sendFormByEmail(
   if (!user?.id) throw new Error("Unauthorized");
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, ...editableFormsWhere(user.id) },
+    where: { id: formId, userId: user.id },
   });
   if (!form) throw new Error("Form not found");
 

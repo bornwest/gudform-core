@@ -25,3 +25,19 @@ export function sharedFormsWhere(userId: string): Prisma.FormWhereInput {
 export function editableFormsWhere(userId: string): Prisma.FormWhereInput {
   return { OR: [{ userId }, sharedFormsWhere(userId)] };
 }
+
+export const OWNER_ONLY_FORM_FIELDS = [
+  "redirectUrl",
+  "notifyOnResponse",
+  "webhookUrl",
+  "webhookSecret",
+  "autoResponderEnabled",
+  "autoResponderSubject",
+  "autoResponderMessage",
+  "paymentEnabled",
+  "paymentAmount",
+  "paymentCurrency",
+  "paymentDescription",
+  "paymentOptions",
+  "paymentSelectionMode",
+] as const;

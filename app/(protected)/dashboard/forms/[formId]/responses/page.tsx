@@ -302,6 +302,7 @@ export default function FormResponsesPage() {
               formTitle={formTitle}
               slug={formSlug}
               defaultTab="embed"
+              canSendEmail={isOwner}
             >
               <Button variant="outline" disabled={isPending}>
                 <Code className="mr-2 size-4" />

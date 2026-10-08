@@ -189,6 +189,7 @@ export default function FormBuilderPage() {
   const canUseBranding = planFeatures.customBranding;
   const coreUnlocked = canUseBranding;
   const [removeBranding, setRemoveBranding] = useState(false);
+  const [isOwner, setIsOwner] = useState(true);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -216,6 +217,7 @@ export default function FormBuilderPage() {
       }
       setFormTitle(form.title);
       setFormSlug(form.slug);
+      setIsOwner(form.isOwner);
       setFormStatus(form.status);
       setFormThemeMode(form.themeMode);
       setFormThemeColor(form.themeColor || "#6366f1");
@@ -1209,6 +1211,13 @@ export default function FormBuilderPage() {
 
             <Separator className="my-4" />
 
+            {!isOwner ? (
+              <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
+                Only the form owner can change notifications, webhooks,
+                auto-responder and payment settings.
+              </p>
+            ) : (
+              <>
             {/* Notifications */}
             <div className="space-y-3">
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
@@ -1764,6 +1773,8 @@ export default function FormBuilderPage() {
                 </>
               )}
             </div>
+              </>
+            )}
               </>
             )}
 
