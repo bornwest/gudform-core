@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
-import { putStoredObject } from "@/lib/storage";
-import { checkStorageLimit, getEffectivePlanConfig } from "@/lib/subscription";
+import { getUploadsFolder, putStoredObject } from "@/lib/storage";
+import { checkStorageLimit } from "@/lib/subscription";
 
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
@@ -95,19 +95,13 @@ export async function POST(req: NextRequest) {
       ? `.${file.name.split(".").pop()}`
       : "";
     const uuid = crypto.randomUUID();
-    const key = `uploads/${formId}/${uuid}${ext}`;
+    const key = `${getUploadsFolder()}/${formId}/${uuid}${ext}`;
     const arrayBuffer = await file.arrayBuffer();
     const { url } = await putStoredObject({
       key,
       body: Buffer.from(arrayBuffer),
       contentType: file.type,
     });
-
-    const planConfig = await getEffectivePlanConfig(form.userId);
-    const retentionDays = planConfig.features.fileRetentionDays;
-    const expiresAt = retentionDays
-      ? new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000)
-      : null;
 
     // Create FileUpload record
     await prisma.fileUpload.create({
@@ -119,7 +113,6 @@ export async function POST(req: NextRequest) {
         fileSize: file.size,
         mimeType: file.type,
         url,
-        expiresAt,
       },
     });
 

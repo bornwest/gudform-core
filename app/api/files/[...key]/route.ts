@@ -9,7 +9,7 @@ export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ key: string[] }> },
 ) {
-  if (getStorageDriver() !== "local") {
+  if (getStorageDriver() === "r2") {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
