@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
+import { editableFormsWhere } from "@/lib/form-access";
 
 // Generate embed code and webhook URL
 export async function GET(
@@ -16,7 +17,7 @@ export async function GET(
     }
 
     const form = await prisma.form.findFirst({
-      where: { id: formId, userId: user.id },
+      where: { id: formId, ...editableFormsWhere(user.id) },
     });
 
     if (!form) {
