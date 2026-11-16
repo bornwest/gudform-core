@@ -38,6 +38,8 @@ interface ShareFormDialogProps {
   slug: string;
   children: React.ReactNode;
   defaultTab?: "link" | "qr" | "social" | "embed";
+  // Owner Only
+  canSendEmail?: boolean;
 }
 
 export function ShareFormDialog({
@@ -46,6 +48,7 @@ export function ShareFormDialog({
   slug,
   children,
   defaultTab = "link",
+  canSendEmail = true,
 }: ShareFormDialogProps) {
   const [copied, setCopied] = useState<string | null>(null);
   const [emailRecipients, setEmailRecipients] = useState("");
@@ -254,6 +257,7 @@ window.addEventListener("message", function (e) {
             ))}
 
             {/* Email sharing */}
+            {canSendEmail && (
             <div className="space-y-3 border-t pt-3">
               <Label>
                 <Mail className="mr-1.5 inline size-4" />
@@ -278,6 +282,7 @@ window.addEventListener("message", function (e) {
                 {sendingEmail ? "Sending..." : "Send Invitation"}
               </Button>
             </div>
+            )}
           </TabsContent>
 
           {/* Embed Tab */}

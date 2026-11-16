@@ -65,6 +65,11 @@ export default function ExportTemplatePage() {
         router.push("/dashboard");
         return;
       }
+      if (!form.isOwner) {
+        toast.error("Only the form owner can export it as a template");
+        router.push(`/dashboard/forms/${formId}/responses`);
+        return;
+      }
       setFormTitle(form.title);
       setName(form.title);
       setDescription(form.description || "");
