@@ -1,13 +1,19 @@
 name: Deploy
 
-on: workflow_dispatch
+on:
+  push:
+    branches: [ bw-main ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CI: false
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu
     steps:
       - uses: actions/checkout@v3
       - run: pnpm install
