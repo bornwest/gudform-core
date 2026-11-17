@@ -12,10 +12,16 @@ env:
   CI: false
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu
     steps:
-      - uses: actions/checkout@v3
-      - run: pnpm install
-      - run: pnpm build
-      - run: pm2 restart forms
+      - name: Checkout Code
+        uses: actions/checkout@v3
+      - name: Run Deploy Script 
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ vars.HOST }}
+          username: ${{ vars.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ vars.PORT }}
+          script: gudform-core/bin/deploy
