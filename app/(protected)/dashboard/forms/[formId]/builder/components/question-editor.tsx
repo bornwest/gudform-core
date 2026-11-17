@@ -216,6 +216,7 @@ export function QuestionEditor({
             <ScreenFormatEditor
               question={question}
               onUpdate={updateProperties}
+              formId={formId}
             />
           </>
         )}

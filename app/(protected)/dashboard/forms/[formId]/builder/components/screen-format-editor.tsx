@@ -1,6 +1,18 @@
 "use client";
 
-import { AlignCenter, AlignLeft, Type } from "lucide-react";
+import { useState } from "react";
+import {
+  AlignCenter,
+  AlignLeft,
+  ImageIcon,
+  PanelLeft,
+  PanelRight,
+  Type,
+  Upload,
+  X,
+} from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,18 +31,22 @@ import {
 import type {
   ScreenAlign,
   ScreenDescriptionSize,
+  ScreenImagePosition,
   ScreenTitleSize,
 } from "@/lib/screen-format";
 import { getScreenFormat } from "@/lib/screen-format";
+import { uploadFile } from "@/lib/upload-client";
 
 import type { Question, QuestionProperties } from "./types";
 
 export function ScreenFormatEditor({
   question,
   onUpdate,
+  formId,
 }: {
   question: Question;
   onUpdate: (props: Partial<QuestionProperties>) => void;
+  formId?: string;
 }) {
   const format = getScreenFormat(question.type, question.properties);
   const buttonText = (question.properties.buttonText as string | undefined) || "";
@@ -47,6 +63,14 @@ export function ScreenFormatEditor({
         Blank lines become paragraphs. Wrap words in **double asterisks** for
         bold, or *single asterisks* for italics.
       </p>
+
+      {question.type === "WELCOME_SCREEN" && (
+        <ScreenImageField
+          question={question}
+          onUpdate={onUpdate}
+          formId={formId}
+        />
+      )}
 
       <div className="space-y-2">
         <Label>Alignment</Label>
@@ -167,6 +191,119 @@ export function ScreenFormatEditor({
             }
           />
         </div>
+      )}
+    </div>
+  );
+}
+
+function ScreenImageField({
+  question,
+  onUpdate,
+  formId,
+}: {
+  question: Question;
+  onUpdate: (props: Partial<QuestionProperties>) => void;
+  formId?: string;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const image = (question.properties.image as string | undefined) || "";
+  const position: ScreenImagePosition =
+    question.properties.imagePosition === "right" ? "right" : "left";
+
+  const upload = async (file: File) => {
+    if (!formId) return;
+    setUploading(true);
+    setError(null);
+    try {
+      const { url } = await uploadFile(file, formId);
+      onUpdate({ image: url });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <ImageIcon className="size-4 text-muted-foreground" />
+        <Label>Image (optional)</Label>
+      </div>
+      <div className="flex items-center gap-2">
+        {image ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={image}
+            alt=""
+            className="size-12 shrink-0 rounded border object-cover"
+          />
+        ) : (
+          <div className="size-12 shrink-0 rounded border bg-muted" />
+        )}
+        <Input
+          value={image}
+          onChange={(e) => onUpdate({ image: e.target.value })}
+          placeholder="Image URL"
+          className="h-8 flex-1 text-xs"
+        />
+        {formId && (
+          <label
+            className="inline-flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-md border text-muted-foreground hover:bg-muted aria-disabled:pointer-events-none aria-disabled:opacity-50"
+            aria-label="Upload image"
+            aria-disabled={uploading}
+          >
+            <Upload className="size-3.5" />
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) upload(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        )}
+        {image && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
+            onClick={() => onUpdate({ image: "" })}
+            aria-label="Remove image"
+          >
+            <X className="size-4" />
+          </Button>
+        )}
+      </div>
+      {uploading && (
+        <p className="text-xs text-muted-foreground">Uploading…</p>
+      )}
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {image && (
+        <ToggleGroup
+          type="single"
+          variant="outline"
+          value={position}
+          onValueChange={(value) => {
+            if (value) onUpdate({ imagePosition: value as ScreenImagePosition });
+          }}
+          className="justify-start"
+        >
+          <ToggleGroupItem value="left" aria-label="Image on left">
+            <PanelLeft className="mr-1.5 size-4" />
+            Image left
+          </ToggleGroupItem>
+          <ToggleGroupItem value="right" aria-label="Image on right">
+            <PanelRight className="mr-1.5 size-4" />
+            Image right
+          </ToggleGroupItem>
+        </ToggleGroup>
       )}
     </div>
   );

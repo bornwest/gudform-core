@@ -26,6 +26,8 @@ export interface QuestionProperties {
   descriptionSize?: "sm" | "md" | "lg";
   descriptionColor?: string;
   descriptionBold?: boolean;
+  image?: string;
+  imagePosition?: "left" | "right";
   maxFileSize?: number;
   maxFileSizeMB?: number;
   [key: string]: any;

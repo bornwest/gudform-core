@@ -556,9 +556,9 @@ export function ClassicFormRenderer({
         {/* Welcome screen */}
         {welcomeScreen && (() => {
           const format = getScreenFormat(welcomeScreen.type, welcomeScreen.properties);
-          return (
+          const copy = (
             <div className={cn(
-              "mb-16",
+              !format.image && "mb-16",
               format.align === "center" ? "text-center" : "text-left"
             )}>
               <FormattedText
@@ -583,6 +583,21 @@ export function ClassicFormRenderer({
                   style={format.descriptionColor ? { color: format.descriptionColor } : undefined}
                 />
               )}
+            </div>
+          );
+          if (!format.image) return copy;
+          return (
+            <div className="mb-16 grid items-center gap-8 md:grid-cols-2 md:gap-12">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={format.image}
+                alt=""
+                className={cn(
+                  "aspect-square w-full rounded-xl object-cover",
+                  format.imagePosition === "right" && "md:order-last"
+                )}
+              />
+              {copy}
             </div>
           );
         })()}

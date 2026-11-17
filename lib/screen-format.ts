@@ -1,6 +1,7 @@
 export type ScreenAlign = "left" | "center";
 export type ScreenTitleSize = "sm" | "md" | "lg" | "xl";
 export type ScreenDescriptionSize = "sm" | "md" | "lg";
+export type ScreenImagePosition = "left" | "right";
 
 export interface ScreenFormat {
   align: ScreenAlign;
@@ -10,6 +11,9 @@ export interface ScreenFormat {
   descriptionSize: ScreenDescriptionSize;
   descriptionColor?: string;
   descriptionBold: boolean;
+  /** Optional side image (welcome screen only). */
+  image?: string;
+  imagePosition: ScreenImagePosition;
 }
 
 export interface TextRun {
@@ -55,14 +59,38 @@ function asDescriptionSize(
     : fallback;
 }
 
+/**
+ * Accept only http(s) URLs or same-origin absolute paths (e.g. /api/files/...)
+ * so arbitrary schemes can't end up in an <img src>.
+ */
+export function sanitizeImageUrl(
+  value: unknown,
+): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    return url.protocol === "http:" || url.protocol === "https:"
+      ? trimmed
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export function getScreenFormat(
   type: string,
   properties: Record<string, unknown> | null | undefined,
 ): ScreenFormat {
   const props = properties ?? {};
+  const image =
+    type === "WELCOME_SCREEN" ? sanitizeImageUrl(props.image) : undefined;
   const centered = type === "WELCOME_SCREEN" || type === "THANK_YOU_SCREEN";
   return {
-    align: asAlign(props.align, centered ? "center" : "left"),
+    // With a side image the copy reads better left-aligned next to it.
+    align: asAlign(props.align, centered && !image ? "center" : "left"),
     titleSize: asTitleSize(props.titleSize, centered ? "lg" : "md"),
     titleColor: sanitizeHexColor(
       typeof props.titleColor === "string" ? props.titleColor : undefined,
@@ -78,6 +106,8 @@ export function getScreenFormat(
         : undefined,
     ),
     descriptionBold: props.descriptionBold === true,
+    image,
+    imagePosition: props.imagePosition === "right" ? "right" : "left",
   };
 }
 

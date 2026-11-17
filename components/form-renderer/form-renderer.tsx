@@ -32,6 +32,7 @@ import type { LogicRule } from "@/lib/types/logic";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
 import { isPaymentOptionsForm, isLegacyPaymentForm } from "@/lib/types/payment";
 import { cn, contrastColor } from "@/lib/utils";
+import { uploadFile } from "@/lib/upload-client";
 import { FormattedText } from "@/components/form-renderer/formatted-text";
 import { FormThemeWrapper } from "@/components/form-renderer/form-theme-wrapper";
 import { PaymentSelector } from "@/components/form-renderer/payment-selector";
@@ -245,7 +246,7 @@ function WelcomeScreen({
   const format = getScreenFormat(question.type, question.properties);
   const buttonText =
     (question.properties?.buttonText as string | undefined)?.trim() || "Start";
-  return (
+  const content = (
     <div
       className={cn(
         "flex flex-col",
@@ -277,6 +278,27 @@ function WelcomeScreen({
           Enter
         </kbd>
       </p>
+    </div>
+  );
+
+  if (!format.image) return content;
+
+  return (
+    <div className="grid w-full items-center gap-10 md:grid-cols-2 md:gap-16">
+      <div
+        className={cn(
+          "w-full",
+          format.imagePosition === "right" && "md:order-last",
+        )}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={format.image}
+          alt=""
+          className="aspect-square w-full rounded-xl object-cover"
+        />
+      </div>
+      {content}
     </div>
   );
 }
@@ -1381,13 +1403,8 @@ function SignatureInput({
       );
       if (!blob) throw new Error("Could not save signature");
       const file = new File([blob], "signature.png", { type: "image/png" });
-      const body = new FormData();
-      body.append("file", file);
-      body.append("formId", formId);
-      const res = await fetch("/api/upload", { method: "POST", body });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Upload failed");
-      onChange(data.url);
+      const { url } = await uploadFile(file, formId);
+      onChange(url);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not save signature");
     } finally {
@@ -1476,7 +1493,7 @@ function FileUploadInput({
     );
   }
 
-  async function uploadFile(file: File) {
+  async function handleUpload(file: File) {
     setError("");
 
     if (file.size > MAX_SIZE) {
@@ -1488,23 +1505,13 @@ function FileUploadInput({
     setFileName(file.name);
 
     try {
-      const body = new FormData();
-      body.append("file", file);
-      body.append("formId", formId);
-
-      const res = await fetch("/api/upload", { method: "POST", body });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error || "Upload failed");
-        setFileName("");
-        return;
-      }
-
-      setFileUrl(data.url);
-      onChange(data.url);
-    } catch {
-      setError("Upload failed. Please try again.");
+      const { url } = await uploadFile(file, formId);
+      setFileUrl(url);
+      onChange(url);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Upload failed. Please try again.",
+      );
       setFileName("");
     } finally {
       setUploading(false);
@@ -1513,7 +1520,7 @@ function FileUploadInput({
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) uploadFile(file);
+    if (file) handleUpload(file);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -1530,7 +1537,7 @@ function FileUploadInput({
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer.files?.[0];
-    if (file) uploadFile(file);
+    if (file) handleUpload(file);
   };
 
   return (
@@ -2430,6 +2437,11 @@ export function FormRenderer({
   const isWelcomeOrThankYou =
     currentQuestion?.type === "WELCOME_SCREEN" ||
     currentQuestion?.type === "THANK_YOU_SCREEN";
+  const isWelcomeWithImage =
+    currentQuestion?.type === "WELCOME_SCREEN" &&
+    Boolean(
+      getScreenFormat(currentQuestion.type, currentQuestion.properties).image,
+    );
 
   // Resolve background colour – when using SYSTEM theme we need to listen
   // for the OS preference so we can swap the default white background to
@@ -2507,7 +2519,8 @@ export function FormRenderer({
           <main className="flex flex-1 items-center justify-center px-6 py-20 sm:px-8">
             <div
               className={cn(
-                "w-full max-w-2xl transition-all duration-500 ease-out",
+                "w-full transition-all duration-500 ease-out",
+                isWelcomeWithImage ? "max-w-6xl" : "max-w-2xl",
                 isWelcomeOrThankYou && "flex items-center justify-center",
                 visible
                   ? "translate-y-0 scale-100 opacity-100"

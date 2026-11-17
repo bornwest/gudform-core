@@ -1,10 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { Plus, Upload, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { uploadFile } from "@/lib/upload-client";
 
 export function ChoiceEditor({
   choices,
@@ -22,6 +24,11 @@ export function ChoiceEditor({
   formId?: string;
 }) {
   const images = choiceImages ?? choices.map(() => "");
+  const [uploadingIndex, setUploadingIndex] = useState<number | null>(null);
+  const [uploadError, setUploadError] = useState<{
+    index: number;
+    message: string;
+  } | null>(null);
 
   const syncImages = (nextChoices: string[], nextImages: (string | null)[]) => {
     onChange(nextChoices);
@@ -37,6 +44,8 @@ export function ChoiceEditor({
 
   const removeChoice = (index: number) => {
     if (choices.length <= 1) return;
+    // Indexes shift on removal, so an error would point at the wrong row.
+    setUploadError(null);
     syncImages(
       choices.filter((_, i) => i !== index),
       images.filter((_, i) => i !== index),
@@ -57,13 +66,18 @@ export function ChoiceEditor({
 
   const uploadImage = async (index: number, file: File) => {
     if (!formId || !onImagesChange) return;
-    const body = new FormData();
-    body.append("file", file);
-    body.append("formId", formId);
-    const res = await fetch("/api/upload", { method: "POST", body });
-    const data = await res.json();
-    if (res.ok && typeof data.url === "string") {
-      updateImage(index, data.url);
+    setUploadingIndex(index);
+    setUploadError(null);
+    try {
+      const { url } = await uploadFile(file, formId);
+      updateImage(index, url);
+    } catch (err) {
+      setUploadError({
+        index,
+        message: err instanceof Error ? err.message : "Upload failed",
+      });
+    } finally {
+      setUploadingIndex(null);
     }
   };
 
@@ -113,12 +127,17 @@ export function ChoiceEditor({
                   className="h-8 flex-1 text-xs"
                 />
                 {formId && (
-                  <label className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md border text-muted-foreground hover:bg-muted">
+                  <label
+                    className="inline-flex size-8 cursor-pointer items-center justify-center rounded-md border text-muted-foreground hover:bg-muted aria-disabled:pointer-events-none aria-disabled:opacity-50"
+                    aria-label="Upload image"
+                    aria-disabled={uploadingIndex === i}
+                  >
                     <Upload className="size-3.5" />
                     <input
                       type="file"
                       accept="image/*"
                       className="hidden"
+                      disabled={uploadingIndex === i}
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (file) uploadImage(i, file);
@@ -128,6 +147,14 @@ export function ChoiceEditor({
                   </label>
                 )}
               </div>
+            )}
+            {pictureChoice && uploadingIndex === i && (
+              <p className="ml-8 text-xs text-muted-foreground">Uploading…</p>
+            )}
+            {pictureChoice && uploadError?.index === i && (
+              <p className="ml-8 text-xs text-destructive">
+                {uploadError.message}
+              </p>
             )}
           </div>
         ))}
