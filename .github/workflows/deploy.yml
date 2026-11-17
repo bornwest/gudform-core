@@ -24,4 +24,4 @@ jobs:
           username: ${{ vars.USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ vars.PORT }}
-          script: gudform-core/bin/deploy
+          script: sh deploy
