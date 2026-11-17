@@ -5,7 +5,10 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { ensureDefaultCollection } from "@/lib/collections";
-import { usableCollectionsWhere } from "@/lib/form-access";
+import {
+  sharedCollectionsWhere,
+  usableCollectionsWhere,
+} from "@/lib/form-access";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 // ─── List ────────────────────────────────────────────────────────────────────
@@ -64,15 +67,49 @@ export async function getUsableCollections() {
     .sort((a, b) => Number(b.isOwn) - Number(a.isOwn));
 }
 
+/** Other users' collections shared with the user through their teams. */
+export async function getSharedCollections() {
+  const user = await getCurrentUser();
+  if (!user?.id) throw new Error("Unauthorized");
+
+  const collections = await prisma.collection.findMany({
+    where: sharedCollectionsWhere(user.id),
+    select: {
+      id: true,
+      name: true,
+      user: { select: { name: true, email: true } },
+      // Only the teams the viewer is on; other assignments are the owner's.
+      teams: {
+        where: { team: { members: { some: { userId: user.id } } } },
+        select: { team: { select: { name: true } } },
+      },
+      _count: { select: { forms: true } },
+    },
+    orderBy: { name: "asc" },
+  });
+
+  return collections.map(({ user: owner, teams, ...collection }) => ({
+    ...collection,
+    ownerName: owner.name || owner.email || "Another user",
+    teamNames: teams.map((t) => t.team.name),
+  }));
+}
+
 // ─── Get by ID ───────────────────────────────────────────────────────────────
 
 export async function getCollectionById(collectionId: string) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
+  // Owners get the full page; members of a team it is shared with get a
+  // read-only view of its forms.
   const collection = await prisma.collection.findFirst({
-    where: { id: collectionId, userId: user.id },
+    where: {
+      id: collectionId,
+      OR: [{ userId: user.id }, sharedCollectionsWhere(user.id)],
+    },
     include: {
+      user: { select: { name: true, email: true } },
       forms: {
         include: {
           _count: { select: { responses: { where: COUNTABLE_RESPONSE_WHERE }, questions: true } },
@@ -97,10 +134,17 @@ export async function getCollectionById(collectionId: string) {
   });
   if (!collection) return null;
 
+  const { user: owner, ...rest } = collection;
+  const isOwner = collection.userId === user.id;
+
   // Team admins can file their own forms here, so the collection owner does
   // not necessarily own every form in it.
   return {
-    ...collection,
+    ...rest,
+    isOwner,
+    ownerName: isOwner ? null : owner.name || owner.email || "Another user",
+    // Team assignments are managed by the owner only.
+    teams: isOwner ? collection.teams : [],
     forms: collection.forms.map((form) => ({
       ...form,
       canMove: form.userId === user.id,

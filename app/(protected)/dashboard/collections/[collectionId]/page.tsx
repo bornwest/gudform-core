@@ -194,8 +194,14 @@ export default function CollectionDetailPage() {
             <p className="text-sm text-muted-foreground">
               {collection._count.forms} form
               {collection._count.forms !== 1 ? "s" : ""} &middot;{" "}
-              {collection._count.teams} team
-              {collection._count.teams !== 1 ? "s" : ""}
+              {collection.isOwner ? (
+                <>
+                  {collection._count.teams} team
+                  {collection._count.teams !== 1 ? "s" : ""}
+                </>
+              ) : (
+                <>Shared by {collection.ownerName}</>
+              )}
             </p>
           </div>
         </div>
@@ -204,7 +210,11 @@ export default function CollectionDetailPage() {
       <Tabs defaultValue="forms">
         <TabsList>
           <TabsTrigger value="forms">Forms</TabsTrigger>
-          <TabsTrigger value="teams">Teams</TabsTrigger>
+          {/* Team assignments are managed by the collection owner only; with
+              the trigger hidden, the Teams panel below can't be opened. */}
+          {collection.isOwner && (
+            <TabsTrigger value="teams">Teams</TabsTrigger>
+          )}
         </TabsList>
 
         {/* Forms Tab */}
@@ -218,7 +228,9 @@ export default function CollectionDetailPage() {
                 No forms in this collection
               </h2>
               <p className="mt-2 text-sm text-muted-foreground">
-                Move forms here from the My Forms page
+                {collection.isOwner
+                  ? "Move forms here from the My Forms page"
+                  : "Forms filed here will appear in this list"}
               </p>
             </div>
           ) : (
