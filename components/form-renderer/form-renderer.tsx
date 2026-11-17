@@ -284,21 +284,21 @@ function WelcomeScreen({
   if (!format.image) return content;
 
   return (
-    <div className="grid w-full items-center gap-10 md:grid-cols-2 md:gap-16">
-      <div
-        className={cn(
-          "w-full",
-          format.imagePosition === "right" && "md:order-last",
-        )}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={format.image}
-          alt=""
-          className="aspect-square w-full rounded-xl object-cover"
-        />
-      </div>
-      {content}
+    <div
+      className={cn(
+        "flex w-full flex-col items-start gap-10 md:items-center md:gap-16",
+        format.imagePosition === "right" ? "md:flex-row-reverse" : "md:flex-row",
+      )}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={format.image}
+        alt=""
+        width={300}
+        height={300}
+        className="aspect-square w-[300px] max-w-full shrink-0 rounded-xl object-cover"
+      />
+      <div className="min-w-0 flex-1">{content}</div>
     </div>
   );
 }
@@ -2520,7 +2520,7 @@ export function FormRenderer({
             <div
               className={cn(
                 "w-full transition-all duration-500 ease-out",
-                isWelcomeWithImage ? "max-w-6xl" : "max-w-2xl",
+                isWelcomeWithImage ? "max-w-4xl" : "max-w-2xl",
                 isWelcomeOrThankYou && "flex items-center justify-center",
                 visible
                   ? "translate-y-0 scale-100 opacity-100"
