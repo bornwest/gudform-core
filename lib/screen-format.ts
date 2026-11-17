@@ -3,6 +3,9 @@ export type ScreenTitleSize = "sm" | "md" | "lg" | "xl";
 export type ScreenDescriptionSize = "sm" | "md" | "lg";
 export type ScreenImagePosition = "left" | "right";
 
+/** Shown on the welcome screen when no image has been set. */
+export const DEFAULT_WELCOME_IMAGE = "/_static/images/welcome-default.png";
+
 export interface ScreenFormat {
   align: ScreenAlign;
   titleSize: ScreenTitleSize;
@@ -11,7 +14,7 @@ export interface ScreenFormat {
   descriptionSize: ScreenDescriptionSize;
   descriptionColor?: string;
   descriptionBold: boolean;
-  /** Optional side image (welcome screen only). */
+  /** Side image (welcome screen only; falls back to DEFAULT_WELCOME_IMAGE). */
   image?: string;
   imagePosition: ScreenImagePosition;
 }
@@ -86,7 +89,9 @@ export function getScreenFormat(
 ): ScreenFormat {
   const props = properties ?? {};
   const image =
-    type === "WELCOME_SCREEN" ? sanitizeImageUrl(props.image) : undefined;
+    type === "WELCOME_SCREEN"
+      ? (sanitizeImageUrl(props.image) ?? DEFAULT_WELCOME_IMAGE)
+      : undefined;
   const centered = type === "WELCOME_SCREEN" || type === "THANK_YOU_SCREEN";
   return {
     // With a side image the copy reads better left-aligned next to it.

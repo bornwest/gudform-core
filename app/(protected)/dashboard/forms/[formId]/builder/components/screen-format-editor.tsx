@@ -34,7 +34,7 @@ import type {
   ScreenImagePosition,
   ScreenTitleSize,
 } from "@/lib/screen-format";
-import { getScreenFormat } from "@/lib/screen-format";
+import { DEFAULT_WELCOME_IMAGE, getScreenFormat } from "@/lib/screen-format";
 import { uploadFile } from "@/lib/upload-client";
 
 import type { Question, QuestionProperties } from "./types";
@@ -229,23 +229,19 @@ function ScreenImageField({
     <div className="space-y-2">
       <div className="flex items-center gap-2">
         <ImageIcon className="size-4 text-muted-foreground" />
-        <Label>Image (optional)</Label>
+        <Label>Image</Label>
       </div>
       <div className="flex items-center gap-2">
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={image}
-            alt=""
-            className="size-12 shrink-0 rounded border object-cover"
-          />
-        ) : (
-          <div className="size-12 shrink-0 rounded border bg-muted" />
-        )}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={image || DEFAULT_WELCOME_IMAGE}
+          alt=""
+          className="size-12 shrink-0 rounded border object-cover"
+        />
         <Input
           value={image}
           onChange={(e) => onUpdate({ image: e.target.value })}
-          placeholder="Image URL"
+          placeholder="Image URL (default image if empty)"
           className="h-8 flex-1 text-xs"
         />
         {formId && (
@@ -275,7 +271,7 @@ function ScreenImageField({
             size="icon"
             className="size-8 shrink-0 text-muted-foreground hover:text-destructive"
             onClick={() => onUpdate({ image: "" })}
-            aria-label="Remove image"
+            aria-label="Reset to default image"
           >
             <X className="size-4" />
           </Button>
@@ -285,26 +281,24 @@ function ScreenImageField({
         <p className="text-xs text-muted-foreground">Uploading…</p>
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}
-      {image && (
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          value={position}
-          onValueChange={(value) => {
-            if (value) onUpdate({ imagePosition: value as ScreenImagePosition });
-          }}
-          className="justify-start"
-        >
-          <ToggleGroupItem value="left" aria-label="Image on left">
-            <PanelLeft className="mr-1.5 size-4" />
-            Image left
-          </ToggleGroupItem>
-          <ToggleGroupItem value="right" aria-label="Image on right">
-            <PanelRight className="mr-1.5 size-4" />
-            Image right
-          </ToggleGroupItem>
-        </ToggleGroup>
-      )}
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        value={position}
+        onValueChange={(value) => {
+          if (value) onUpdate({ imagePosition: value as ScreenImagePosition });
+        }}
+        className="justify-start"
+      >
+        <ToggleGroupItem value="left" aria-label="Image on left">
+          <PanelLeft className="mr-1.5 size-4" />
+          Image left
+        </ToggleGroupItem>
+        <ToggleGroupItem value="right" aria-label="Image on right">
+          <PanelRight className="mr-1.5 size-4" />
+          Image right
+        </ToggleGroupItem>
+      </ToggleGroup>
     </div>
   );
 }
