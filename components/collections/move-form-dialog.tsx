@@ -14,11 +14,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  getUserCollections,
+  getUsableCollections,
   moveFormToCollection,
 } from "@/actions/collection-actions";
 
-type Collection = Awaited<ReturnType<typeof getUserCollections>>[number];
+type Collection = Awaited<ReturnType<typeof getUsableCollections>>[number];
 
 interface MoveFormDialogProps {
   formId: string;
@@ -39,18 +39,24 @@ export function MoveFormDialog({
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {
-    getUserCollections().then((data) => {
-      setCollections(data);
-      setLoading(false);
-    });
+    getUsableCollections()
+      .then(setCollections)
+      .catch(() => toast.error("Could not load collections"))
+      .finally(() => setLoading(false));
   }, []);
 
   const handleMove = () => {
     if (!selectedId) return;
     startTransition(async () => {
-      await moveFormToCollection(formId, selectedId);
-      toast.success("Form moved to collection");
-      onMoved();
+      try {
+        await moveFormToCollection(formId, selectedId);
+        toast.success("Form moved to collection");
+        onMoved();
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : "Failed to move form",
+        );
+      }
     });
   };
 
@@ -110,6 +116,8 @@ export function MoveFormDialog({
                     <span className="text-xs text-muted-foreground">
                       {collection._count.forms} form
                       {collection._count.forms !== 1 ? "s" : ""}
+                      {!collection.isOwn &&
+                        ` · ${collection.ownerName}'s, shared with ${collection.teamNames.join(", ")}`}
                     </span>
                   </div>
                 </button>

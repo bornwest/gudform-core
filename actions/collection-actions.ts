@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { ensureDefaultCollection } from "@/lib/collections";
+import { usableCollectionsWhere } from "@/lib/form-access";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 // ─── List ────────────────────────────────────────────────────────────────────
@@ -27,13 +28,49 @@ export async function getUserCollections() {
   });
 }
 
+/**
+ * Collections the user can create forms in or move forms into: their own,
+ * plus collections shared with a team where they are OWNER or ADMIN.
+ */
+export async function getUsableCollections() {
+  const user = await getCurrentUser();
+  if (!user?.id) throw new Error("Unauthorized");
+
+  await ensureDefaultCollection(user.id);
+
+  const collections = await prisma.collection.findMany({
+    where: usableCollectionsWhere(user.id),
+    include: {
+      user: { select: { name: true, email: true } },
+      teams: { select: { team: { select: { name: true } } } },
+      _count: { select: { forms: true } },
+    },
+    orderBy: [{ isDefault: "desc" }, { name: "asc" }],
+  });
+
+  return collections
+    .map(({ user: owner, teams, ...collection }) => {
+      const isOwn = collection.userId === user.id;
+      return {
+        ...collection,
+        isOwn,
+        // A shared collection may be another user's default; only the
+        // viewer's own default should be labelled as such.
+        isDefault: isOwn && collection.isDefault,
+        ownerName: isOwn ? null : owner.name || owner.email || "Another user",
+        teamNames: isOwn ? [] : teams.map((t) => t.team.name),
+      };
+    })
+    .sort((a, b) => Number(b.isOwn) - Number(a.isOwn));
+}
+
 // ─── Get by ID ───────────────────────────────────────────────────────────────
 
 export async function getCollectionById(collectionId: string) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  return prisma.collection.findFirst({
+  const collection = await prisma.collection.findFirst({
     where: { id: collectionId, userId: user.id },
     include: {
       forms: {
@@ -58,6 +95,18 @@ export async function getCollectionById(collectionId: string) {
       _count: { select: { forms: true, teams: true } },
     },
   });
+  if (!collection) return null;
+
+  // Team admins can file their own forms here, so the collection owner does
+  // not necessarily own every form in it.
+  return {
+    ...collection,
+    forms: collection.forms.map((form) => ({
+      ...form,
+      canMove: form.userId === user.id,
+      canDelete: form.userId === user.id,
+    })),
+  };
 }
 
 // ─── Create ──────────────────────────────────────────────────────────────────
@@ -116,13 +165,21 @@ export async function deleteCollection(collectionId: string) {
   if (collection.isDefault)
     throw new Error("Cannot delete default collection");
 
-  // Move orphaned forms back to default collection
-  const defaultCollection = await ensureDefaultCollection(user.id);
-
-  await prisma.form.updateMany({
+  // Move orphaned forms back to each form owner's default collection. Team
+  // admins can file their own forms in a shared collection, so not every
+  // form here belongs to the collection owner.
+  const ownerIds = await prisma.form.findMany({
     where: { collectionId },
-    data: { collectionId: defaultCollection.id },
+    select: { userId: true },
+    distinct: ["userId"],
   });
+  for (const { userId } of ownerIds) {
+    const defaultCollection = await ensureDefaultCollection(userId);
+    await prisma.form.updateMany({
+      where: { collectionId, userId },
+      data: { collectionId: defaultCollection.id },
+    });
+  }
 
   await prisma.collection.delete({
     where: { id: collectionId },
@@ -141,14 +198,15 @@ export async function moveFormToCollection(
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  // Validate ownership of both form and collection
+  // The user must own the form, and the target must be their own collection
+  // or one shared with a team they own or admin.
   const form = await prisma.form.findFirst({
     where: { id: formId, userId: user.id },
   });
   if (!form) throw new Error("Form not found");
 
   const collection = await prisma.collection.findFirst({
-    where: { id: collectionId, userId: user.id },
+    where: { id: collectionId, ...usableCollectionsWhere(user.id) },
   });
   if (!collection) throw new Error("Collection not found");
 

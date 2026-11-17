@@ -276,15 +276,17 @@ export default function CollectionDetailPage() {
                             View Live
                           </DropdownMenuItem>
                         )}
-                        <DropdownMenuItem
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMoveFormId(form.id);
-                          }}
-                        >
-                          <FolderOpen className="mr-2 size-4" />
-                          Move to Collection
-                        </DropdownMenuItem>
+                        {form.canMove && (
+                          <DropdownMenuItem
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMoveFormId(form.id);
+                            }}
+                          >
+                            <FolderOpen className="mr-2 size-4" />
+                            Move to Collection
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem
                           onClick={(e) => {
                             e.stopPropagation();
@@ -294,16 +296,18 @@ export default function CollectionDetailPage() {
                           <Copy className="mr-2 size-4" />
                           Duplicate
                         </DropdownMenuItem>
-                        <DropdownMenuItem
-                          className="text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteForm(form.id);
-                          }}
-                        >
-                          <Trash2 className="mr-2 size-4" />
-                          Delete
-                        </DropdownMenuItem>
+                        {form.canDelete && (
+                          <DropdownMenuItem
+                            className="text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteForm(form.id);
+                            }}
+                          >
+                            <Trash2 className="mr-2 size-4" />
+                            Delete
+                          </DropdownMenuItem>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </div>

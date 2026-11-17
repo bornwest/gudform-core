@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { usableCollectionsWhere } from "@/lib/form-access";
 import { ensureDefaultCollection } from "@/lib/collections";
 import { parseQuestionsPayload, replaceFormQuestions } from "@/lib/form-questions";
 import { createCompletedFormResponse } from "@/lib/form-response";
@@ -63,7 +64,13 @@ async function callTool(
     case "create_form": {
       let collectionId =
         typeof args.collectionId === "string" ? args.collectionId : null;
-      if (!collectionId) {
+      if (collectionId) {
+        const usable = await prisma.collection.findFirst({
+          where: { id: collectionId, ...usableCollectionsWhere(auth.userId) },
+          select: { id: true },
+        });
+        if (!usable) return errorResult("Collection not found");
+      } else {
         const col = await ensureDefaultCollection(auth.userId);
         collectionId = col.id;
       }
