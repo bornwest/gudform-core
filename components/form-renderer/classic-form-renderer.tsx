@@ -587,17 +587,19 @@ export function ClassicFormRenderer({
           );
           if (!format.image) return copy;
           return (
-            <div className="mb-16 grid items-center gap-8 md:grid-cols-2 md:gap-12">
+            <div className={cn(
+              "mb-16 flex flex-col items-start gap-8 md:items-center md:gap-12",
+              format.imagePosition === "right" ? "md:flex-row-reverse" : "md:flex-row"
+            )}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={format.image}
                 alt=""
-                className={cn(
-                  "aspect-square w-full rounded-xl object-cover",
-                  format.imagePosition === "right" && "md:order-last"
-                )}
+                width={300}
+                height={300}
+                className="aspect-square w-[300px] max-w-full shrink-0 rounded-xl object-cover"
               />
-              {copy}
+              <div className="min-w-0 flex-1">{copy}</div>
             </div>
           );
         })()}
