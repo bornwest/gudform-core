@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { usableCollectionsWhere } from "@/lib/form-access";
 import { authorizeApiRequest } from "@/lib/api-auth";
 import { ensureDefaultCollection } from "@/lib/collections";
 import { parseQuestionsPayload, replaceFormQuestions } from "@/lib/form-questions";
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
   } else {
     // Validate collection ownership
     const collection = await prisma.collection.findFirst({
-      where: { id: collectionId, userId: auth.userId },
+      where: { id: collectionId, ...usableCollectionsWhere(auth.userId) },
     });
     if (!collection) {
       return NextResponse.json(

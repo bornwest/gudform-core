@@ -26,6 +26,34 @@ export function editableFormsWhere(userId: string): Prisma.FormWhereInput {
   return { OR: [{ userId }, sharedFormsWhere(userId)] };
 }
 
+/** Team roles that may use collections shared with their team. */
+export const COLLECTION_MANAGER_ROLES = ["OWNER", "ADMIN"] as const;
+
+/**
+ * Collections a user may create forms in and move forms into: their own,
+ * plus any collection shared with a team where they are OWNER or ADMIN.
+ */
+export function usableCollectionsWhere(
+  userId: string,
+): Prisma.CollectionWhereInput {
+  return {
+    OR: [
+      { userId },
+      {
+        teams: {
+          some: {
+            team: {
+              members: {
+                some: { userId, role: { in: [...COLLECTION_MANAGER_ROLES] } },
+              },
+            },
+          },
+        },
+      },
+    ],
+  };
+}
+
 export const OWNER_ONLY_FORM_FIELDS = [
   "redirectUrl",
   "notifyOnResponse",

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { usableCollectionsWhere } from "@/lib/form-access";
 import { authorizeApiRequest } from "@/lib/api-auth";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
@@ -68,7 +69,7 @@ export async function PATCH(req: Request, context: RouteContext) {
 
   if (updateData.collectionId) {
     const collection = await prisma.collection.findFirst({
-      where: { id: updateData.collectionId, userId: auth.userId },
+      where: { id: updateData.collectionId, ...usableCollectionsWhere(auth.userId) },
     });
     if (!collection) {
       return NextResponse.json(
