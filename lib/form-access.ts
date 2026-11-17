@@ -26,6 +26,19 @@ export function editableFormsWhere(userId: string): Prisma.FormWhereInput {
   return { OR: [{ userId }, sharedFormsWhere(userId)] };
 }
 
+/**
+ * Other users' collections shared with any team the user belongs to, at any
+ * role. Members can view them; only OWNER/ADMIN can file forms into them.
+ */
+export function sharedCollectionsWhere(
+  userId: string,
+): Prisma.CollectionWhereInput {
+  return {
+    userId: { not: userId },
+    teams: { some: { team: { members: { some: { userId } } } } },
+  };
+}
+
 /** Team roles that may use collections shared with their team. */
 export const COLLECTION_MANAGER_ROLES = ["OWNER", "ADMIN"] as const;
 

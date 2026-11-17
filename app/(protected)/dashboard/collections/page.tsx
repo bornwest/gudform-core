@@ -33,6 +33,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   createCollection,
   deleteCollection,
+  getSharedCollections,
   getUserCollections,
   updateCollection,
 } from "@/actions/collection-actions";
@@ -40,10 +41,16 @@ import {
 type CollectionWithCounts = Awaited<
   ReturnType<typeof getUserCollections>
 >[number];
+type SharedCollection = Awaited<
+  ReturnType<typeof getSharedCollections>
+>[number];
 
 export default function CollectionsPage() {
   const router = useRouter();
   const [collections, setCollections] = useState<CollectionWithCounts[]>([]);
+  const [sharedCollections, setSharedCollections] = useState<
+    SharedCollection[]
+  >([]);
   const [loading, setLoading] = useState(true);
   const [isPending, startTransition] = useTransition();
 
@@ -57,10 +64,13 @@ export default function CollectionsPage() {
   const [renameName, setRenameName] = useState("");
 
   useEffect(() => {
-    getUserCollections().then((data) => {
-      setCollections(data);
-      setLoading(false);
-    });
+    Promise.all([getUserCollections(), getSharedCollections()]).then(
+      ([own, shared]) => {
+        setCollections(own);
+        setSharedCollections(shared);
+        setLoading(false);
+      },
+    );
   }, []);
 
   const handleCreate = () => {
@@ -200,6 +210,49 @@ export default function CollectionsPage() {
             </Card>
           ))}
         </div>
+      )}
+
+      {/* Other users' collections shared through the viewer's teams. */}
+      {!loading && sharedCollections.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-lg font-semibold">Shared with me</h2>
+          <p className="text-sm text-muted-foreground">
+            Collections shared with you through your teams
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {sharedCollections.map((collection) => (
+              <Card
+                key={collection.id}
+                className="cursor-pointer p-5 transition-shadow hover:shadow-md"
+                onClick={() =>
+                  router.push(`/dashboard/collections/${collection.id}`)
+                }
+              >
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-gradient-to-br from-green-500/10 to-teal-500/10 p-2">
+                    <FolderOpen className="size-5 text-green-600 dark:text-green-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="truncate font-semibold">
+                      {collection.name}
+                    </h3>
+                    <p className="mt-0.5 text-sm text-muted-foreground">
+                      {collection._count.forms} form
+                      {collection._count.forms !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <Users className="size-3 shrink-0" />
+                  <span className="truncate">
+                    Shared by {collection.ownerName} · via{" "}
+                    {collection.teamNames.join(", ")}
+                  </span>
+                </div>
+              </Card>
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Create Dialog */}
