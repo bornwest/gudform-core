@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { usableCollectionsWhere } from "@/lib/form-access";
+import { ownedFormsWhere, usableCollectionsWhere } from "@/lib/form-access";
 import { authorizeApiRequest } from "@/lib/api-auth";
 import { ensureDefaultCollection } from "@/lib/collections";
 import { parseQuestionsPayload, replaceFormQuestions } from "@/lib/form-questions";
@@ -18,7 +18,7 @@ export async function GET(req: Request) {
 
   const forms = await prisma.form.findMany({
     where: {
-      userId: auth.userId,
+      ...ownedFormsWhere(auth.userId),
       ...(collectionId ? { collectionId } : {}),
     },
     select: {

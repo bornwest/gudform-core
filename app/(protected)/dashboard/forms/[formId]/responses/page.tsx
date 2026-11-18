@@ -104,6 +104,7 @@ export default function FormResponsesPage() {
   const [formStatus, setFormStatus] = useState<string | null>(null);
   const [formCollectionId, setFormCollectionId] = useState<string | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [isPrimaryOwner, setIsPrimaryOwner] = useState(false);
 
   useEffect(() => {
     async function loadData() {
@@ -121,6 +122,7 @@ export default function FormResponsesPage() {
           setFormStatus(formData.status);
           setFormCollectionId(formData.collectionId);
           setIsOwner(formData.isOwner);
+          setIsPrimaryOwner(formData.isPrimaryOwner);
         }
       } catch (error) {
         toast.error("Failed to load responses");
@@ -354,7 +356,7 @@ export default function FormResponsesPage() {
                 <Copy className="mr-2 size-4" />
                 Duplicate
               </DropdownMenuItem>
-              {isOwner && (
+              {isPrimaryOwner && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem

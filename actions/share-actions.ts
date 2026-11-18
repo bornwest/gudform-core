@@ -1,6 +1,7 @@
 "use server";
 
 import { prisma } from "@/lib/db";
+import { ownedFormsWhere } from "@/lib/form-access";
 import { getEmailFrom, getResend } from "@/lib/email";
 import { escapeHtml } from "@/lib/html-escape";
 import { getCurrentUser } from "@/lib/session";
@@ -14,7 +15,7 @@ export async function sendFormByEmail(
   if (!user?.id) throw new Error("Unauthorized");
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...ownedFormsWhere(user.id) },
   });
   if (!form) throw new Error("Form not found");
 

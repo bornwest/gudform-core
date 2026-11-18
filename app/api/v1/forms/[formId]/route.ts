@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
-import { usableCollectionsWhere } from "@/lib/form-access";
+import { ownedFormsWhere, usableCollectionsWhere } from "@/lib/form-access";
 import { authorizeApiRequest } from "@/lib/api-auth";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
@@ -17,7 +17,7 @@ export async function GET(req: Request, context: RouteContext) {
   const { formId } = await context.params;
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: auth.userId },
+    where: { id: formId, ...ownedFormsWhere(auth.userId) },
     include: {
       questions: { orderBy: { order: "asc" } },
       collection: { select: { id: true, name: true } },
@@ -41,7 +41,7 @@ export async function PATCH(req: Request, context: RouteContext) {
   const body = await req.json().catch(() => ({}));
 
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: auth.userId },
+    where: { id: formId, ...ownedFormsWhere(auth.userId) },
   });
 
   if (!form) {
@@ -98,6 +98,7 @@ export async function DELETE(req: Request, context: RouteContext) {
 
   const { formId } = await context.params;
 
+  // Deleting stays with the primary owner; team admins cannot delete.
   const form = await prisma.form.findFirst({
     where: { id: formId, userId: auth.userId },
   });

@@ -9,6 +9,7 @@ import {
 } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
+import { ownedFormsWhere } from "@/lib/form-access";
 import { getCurrentUser } from "@/lib/session";
 import type { TemplateFormData } from "@/lib/types/template";
 
@@ -203,7 +204,7 @@ export async function exportFormAsTemplate(
 
   // Load the form with questions
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
+    where: { id: formId, ...ownedFormsWhere(user.id) },
     include: {
       questions: { orderBy: { order: "asc" } },
     },

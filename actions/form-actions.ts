@@ -13,8 +13,10 @@ import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 import {
   editableFormsWhere,
   OWNER_ONLY_FORM_FIELDS,
+  ownedFormsWhere,
   sharedFormsWhere,
 } from "@/lib/form-access";
+import { isFormOwner } from "@/lib/form-ownership";
 import {
   createCompletedFormResponse,
   createPendingPaymentResponse,
@@ -142,7 +144,7 @@ export async function getSharedForms() {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  return prisma.form.findMany({
+  const forms = await prisma.form.findMany({
     where: { ...sharedFormsWhere(user.id), userId: { not: user.id } },
     // Only what the dashboard card needs; never ship the owner's settings.
     select: {
@@ -151,6 +153,7 @@ export async function getSharedForms() {
       slug: true,
       status: true,
       updatedAt: true,
+      collectionId: true,
       user: { select: { name: true, email: true } },
       _count: {
         select: {
@@ -161,6 +164,15 @@ export async function getSharedForms() {
     },
     orderBy: { updatedAt: "desc" },
   });
+
+  // Team OWNER/ADMINs own the shared forms their team reaches; it lets the
+  // dashboard offer Move.
+  const owned = await prisma.form.findMany({
+    where: { id: { in: forms.map((f) => f.id) }, ...ownedFormsWhere(user.id) },
+    select: { id: true },
+  });
+  const ownedIds = new Set(owned.map((f) => f.id));
+  return forms.map((form) => ({ ...form, isOwner: ownedIds.has(form.id) }));
 }
 
 export async function getFormById(formId: string) {
@@ -182,12 +194,15 @@ export async function getFormById(formId: string) {
   });
 
   if (!form) return null;
-  // Team members can edit shared forms but not delete or move them.
-  const isOwner = form.userId === user.id;
+  // Team members can edit shared forms; owners (primary or team admin) also get
+  // owner-only settings and moving. Deleting stays with the primary owner.
+  const isPrimaryOwner = form.userId === user.id;
+  const isOwner = isPrimaryOwner || (await isFormOwner(form, user.id));
   return {
     ...form,
     webhookSecret: isOwner ? form.webhookSecret : null,
     isOwner,
+    isPrimaryOwner,
   };
 }
 
@@ -229,8 +244,8 @@ export async function updateForm(
   if (!form) throw new Error("Form not found");
 
   if (
-    form.userId !== user.id &&
-    OWNER_ONLY_FORM_FIELDS.some((field) => data[field] !== undefined)
+    OWNER_ONLY_FORM_FIELDS.some((field) => data[field] !== undefined) &&
+    !(await isFormOwner(form, user.id))
   ) {
     throw new Error("Only the form owner can change these settings");
   }
@@ -1098,11 +1113,11 @@ export async function deleteResponse(responseId: string) {
   if (!user?.id) throw new Error("Unauthorized");
 
   const response = await prisma.formResponse.findFirst({
-    where: { id: responseId },
-    include: { form: true },
+    where: { id: responseId, form: ownedFormsWhere(user.id) },
+    select: { id: true, formId: true },
   });
 
-  if (!response || response.form.userId !== user.id) {
+  if (!response) {
     throw new Error("Not found");
   }
 
