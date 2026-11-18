@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   AlignCenter,
   AlignLeft,
@@ -314,6 +314,15 @@ function ColorField({
 }) {
   const color = value || "#111827";
   const custom = Boolean(value);
+  const pickerRef = useRef<HTMLInputElement>(null);
+
+  const openPicker = () => {
+    try {
+      pickerRef.current?.showPicker();
+    } catch {
+      pickerRef.current?.click();
+    }
+  };
 
   return (
     <div className="space-y-2">
@@ -329,6 +338,7 @@ function ColorField({
       {custom && (
         <div className="flex items-center gap-2">
           <input
+            ref={pickerRef}
             type="color"
             value={color}
             onChange={(e) => onChange(e.target.value)}
@@ -337,8 +347,9 @@ function ColorField({
           />
           <Input
             value={color}
-            onChange={(e) => onChange(e.target.value)}
-            className="font-mono text-xs"
+            readOnly
+            onClick={openPicker}
+            className="cursor-pointer font-mono text-xs"
           />
         </div>
       )}
