@@ -188,7 +188,6 @@ export default function FormBuilderPage() {
   const canUseWebhooks = planFeatures.webhooks;
   const canUseBranding = planFeatures.customBranding;
   const coreUnlocked = canUseBranding;
-  const [removeBranding, setRemoveBranding] = useState(false);
   const [isOwner, setIsOwner] = useState(true);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -261,7 +260,6 @@ export default function FormBuilderPage() {
         ((form as any).user?.subscription?.plan as SubscriptionPlan) ||
           SubscriptionPlan.FREE,
       );
-      setRemoveBranding(form.removeBranding ?? false);
 
       // For published forms with draft changes, load from draftQuestions
       const hasDraftQuestions =
@@ -1778,50 +1776,6 @@ export default function FormBuilderPage() {
               </>
             )}
 
-            <Separator className="my-4" />
-
-            {/* Branding */}
-            <div className="space-y-3">
-              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Branding
-              </Label>
-              {coreUnlocked ? (
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium">Remove branding</p>
-                    <p className="text-xs text-muted-foreground">
-                      Hide &quot;Powered by GudForm&quot; footer
-                    </p>
-                  </div>
-                  <Switch
-                    checked={removeBranding}
-                    onCheckedChange={async (checked) => {
-                      setRemoveBranding(checked);
-                      try {
-                        await updateForm(formId, { removeBranding: checked });
-                        toast.success(
-                          checked ? "Branding removed" : "Branding restored",
-                        );
-                      } catch {
-                        toast.error("Failed to update branding");
-                      }
-                    }}
-                  />
-                </div>
-              ) : (
-                <div className="rounded-lg border border-dashed p-4 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    Removing branding requires a PRO or BUSINESS plan.
-                  </p>
-                  <Link
-                    href="/dashboard/billing"
-                    className="mt-1 inline-block text-sm font-medium text-primary hover:underline"
-                  >
-                    Upgrade &rarr;
-                  </Link>
-                </div>
-              )}
-            </div>
           </div>
         )}
       </div>

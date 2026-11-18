@@ -69,7 +69,6 @@ interface FormData {
   paymentDescription: string | null;
   paymentOptions: PaymentOption[] | null;
   paymentSelectionMode: PaymentSelectionMode;
-  removeBranding: boolean;
 }
 
 interface ClassicFormRendererProps {
@@ -477,19 +476,6 @@ export function ClassicFormRenderer({
                 Redirecting you shortly...
               </p>
             )}
-            {!form.removeBranding && (
-              <a
-                href="https://gudform.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={cn(
-                  "mt-10 inline-block text-sm transition-opacity hover:opacity-80",
-                  colors.textMuted,
-                )}
-              >
-                Create your own form &rarr;
-              </a>
-            )}
           </div>
         </div>
       );
@@ -524,19 +510,6 @@ export function ClassicFormRenderer({
             <p className={cn("mt-8 text-base", colors.textMuted)}>
               Redirecting you shortly...
             </p>
-          )}
-          {!form.removeBranding && (
-            <a
-              href="https://gudform.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "mt-10 inline-block text-sm transition-opacity hover:opacity-80",
-                colors.textMuted,
-              )}
-            >
-              Create your own form &rarr;
-            </a>
           )}
         </div>
       </div>
@@ -1177,22 +1150,6 @@ export function ClassicFormRenderer({
             </button>
           </div>
         </form>
-
-        {!form.removeBranding && (
-          <div className="mt-12 text-center">
-            <a
-              href="https://gudform.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "text-sm transition-opacity hover:opacity-80",
-                colors.textMuted,
-              )}
-            >
-              Powered by <span className="font-semibold">GudForm</span>
-            </a>
-          </div>
-        )}
       </div>
 
       {/* Payment selector overlay */}

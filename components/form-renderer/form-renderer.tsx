@@ -96,7 +96,6 @@ interface FormData {
   paymentDescription: string | null;
   paymentOptions: PaymentOption[] | null;
   paymentSelectionMode: PaymentSelectionMode;
-  removeBranding: boolean;
 }
 
 interface FormRendererProps {
@@ -307,12 +306,10 @@ function ThankYouScreen({
   question,
   themeColor,
   redirectUrl,
-  removeBranding,
 }: {
   question: Question;
   themeColor: string;
   redirectUrl: string | null;
-  removeBranding: boolean;
 }) {
   const c = useC();
 
@@ -357,19 +354,6 @@ function ThankYouScreen({
         <p className={cn("mt-8 text-base", c.textMuted)}>
           Redirecting you shortly...
         </p>
-      )}
-      {!removeBranding && (
-        <a
-          href="https://gudform.com"
-          target="_blank"
-          rel="noopener noreferrer"
-          className={cn(
-            "mt-10 text-sm transition-opacity hover:opacity-80",
-            c.textMuted,
-          )}
-        >
-          Create your own form &rarr;
-        </a>
       )}
     </div>
   );
@@ -2405,7 +2389,6 @@ export function FormRenderer({
           question={currentQuestion}
           themeColor={themeColor}
           redirectUrl={form.redirectUrl}
-          removeBranding={form.removeBranding}
         />
       );
     }
@@ -2577,21 +2560,6 @@ export function FormRenderer({
               </div>
             )}
           </main>
-
-          {/* Branding footer (bottom left) */}
-          {!form.removeBranding && (
-            <a
-              href="https://gudform.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(
-                "fixed bottom-6 left-6 z-40 text-xs transition-opacity hover:opacity-80",
-                colors.textMuted,
-              )}
-            >
-              Powered by <span className="font-semibold">GudForm</span>
-            </a>
-          )}
 
           {/* Navigation buttons (bottom right) */}
           {!isWelcomeOrThankYou && (

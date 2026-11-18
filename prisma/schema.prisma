@@ -160,7 +160,6 @@ model Form {
   autoResponderEnabled Boolean @default(false)
   autoResponderSubject String?
   autoResponderMessage String?  @db.Text
-  removeBranding       Boolean @default(false)
 
   paymentEnabled       Boolean @default(false) @map("payment_enabled")
   paymentAmount        Int?    @map("payment_amount")
