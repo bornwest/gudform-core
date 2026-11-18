@@ -6,9 +6,11 @@ import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
 import { ensureDefaultCollection } from "@/lib/collections";
 import {
+  ownedFormsWhere,
   sharedCollectionsWhere,
   usableCollectionsWhere,
 } from "@/lib/form-access";
+import { findOwnedForm } from "@/lib/form-ownership";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 // ─── List ────────────────────────────────────────────────────────────────────
@@ -139,6 +141,12 @@ export async function getCollectionById(collectionId: string) {
 
   // Team admins can file their own forms here, so the collection owner does
   // not necessarily own every form in it.
+  const owned = await prisma.form.findMany({
+    where: { collectionId, ...ownedFormsWhere(user.id) },
+    select: { id: true },
+  });
+  const ownedIds = new Set(owned.map((f) => f.id));
+
   return {
     ...rest,
     isOwner,
@@ -147,7 +155,7 @@ export async function getCollectionById(collectionId: string) {
     teams: isOwner ? collection.teams : [],
     forms: collection.forms.map((form) => ({
       ...form,
-      canMove: form.userId === user.id,
+      canMove: ownedIds.has(form.id),
       canDelete: form.userId === user.id,
     })),
   };
@@ -242,11 +250,9 @@ export async function moveFormToCollection(
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  // The user must own the form, and the target must be their own collection
-  // or one shared with a team they own or admin.
-  const form = await prisma.form.findFirst({
-    where: { id: formId, userId: user.id },
-  });
+  // The user must own the form (primary or team admin), and the target must be
+  // their own collection or one shared with a team they own or admin.
+  const form = await findOwnedForm(formId, user.id);
   if (!form) throw new Error("Form not found");
 
   const collection = await prisma.collection.findFirst({

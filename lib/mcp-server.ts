@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db";
-import { usableCollectionsWhere } from "@/lib/form-access";
+import { ownedFormsWhere, usableCollectionsWhere } from "@/lib/form-access";
 import { ensureDefaultCollection } from "@/lib/collections";
 import { parseQuestionsPayload, replaceFormQuestions } from "@/lib/form-questions";
 import { createCompletedFormResponse } from "@/lib/form-response";
@@ -36,7 +36,7 @@ async function callTool(
         typeof args.collectionId === "string" ? args.collectionId : undefined;
       const forms = await prisma.form.findMany({
         where: {
-          userId: auth.userId,
+          ...ownedFormsWhere(auth.userId),
           ...(collectionId ? { collectionId } : {}),
         },
         select: {
@@ -55,7 +55,7 @@ async function callTool(
     case "get_form_schema": {
       const formId = String(args.formId || "");
       const form = await prisma.form.findFirst({
-        where: { id: formId, userId: auth.userId },
+        where: { id: formId, ...ownedFormsWhere(auth.userId) },
         include: { questions: { orderBy: { order: "asc" } } },
       });
       if (!form) return errorResult("Form not found");
@@ -95,7 +95,7 @@ async function callTool(
     case "set_questions": {
       const formId = String(args.formId || "");
       const owned = await prisma.form.findFirst({
-        where: { id: formId, userId: auth.userId },
+        where: { id: formId, ...ownedFormsWhere(auth.userId) },
         select: { id: true },
       });
       if (!owned) return errorResult("Form not found");
@@ -107,7 +107,7 @@ async function callTool(
     case "submit_response": {
       const formId = String(args.formId || "");
       const owned = await prisma.form.findFirst({
-        where: { id: formId, userId: auth.userId },
+        where: { id: formId, ...ownedFormsWhere(auth.userId) },
         select: { id: true, status: true },
       });
       if (!owned) return errorResult("Form not found");
@@ -125,14 +125,15 @@ async function callTool(
     case "set_webhook": {
       const formId = String(args.formId || "");
       const owned = await prisma.form.findFirst({
-        where: { id: formId, userId: auth.userId },
-        select: { id: true },
+        where: { id: formId, ...ownedFormsWhere(auth.userId) },
+        select: { id: true, userId: true },
       });
       if (!owned) return errorResult("Form not found");
       const webhookUrl =
         typeof args.webhookUrl === "string" ? args.webhookUrl.trim() : "";
       if (webhookUrl) {
-        const plan = await getEffectivePlanConfig(auth.userId);
+        // Plan limits follow the primary owner, who pays for the form.
+        const plan = await getEffectivePlanConfig(owned.userId);
         try {
           assertPlanFeature(plan, "webhooks", "Webhooks");
         } catch (err) {

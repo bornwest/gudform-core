@@ -43,6 +43,26 @@ export function sharedCollectionsWhere(
 export const COLLECTION_MANAGER_ROLES = ["OWNER", "ADMIN"] as const;
 
 /**
+ * Forms a user owns: as the primary owner (`Form.userId`), or as an OWNER or
+ * ADMIN of a team the form is shared with. Plain members can edit shared
+ * forms but not owner-only settings.
+ */
+export function ownedFormsWhere(userId: string): Prisma.FormWhereInput {
+  const managerTeam = {
+    members: {
+      some: { userId, role: { in: [...COLLECTION_MANAGER_ROLES] } },
+    },
+  };
+  return {
+    OR: [
+      { userId },
+      { team: managerTeam },
+      { collection: { teams: { some: { team: managerTeam } } } },
+    ],
+  };
+}
+
+/**
  * Collections a user may create forms in and move forms into: their own,
  * plus any collection shared with a team where they are OWNER or ADMIN.
  */

@@ -143,9 +143,13 @@ export default function DashboardPage() {
     setMoveFormId(null);
     // Refresh forms with current filter
     await loadForms(selectedCollectionId);
-    // Refresh collection counts
-    const cols = await getUserCollections();
+    // Refresh collection counts and shared forms (team admins can move those)
+    const [cols, shared] = await Promise.all([
+      getUserCollections(),
+      getSharedForms(),
+    ]);
     setCollections(cols);
+    setSharedForms(shared);
   };
 
   return (
@@ -291,6 +295,9 @@ export default function DashboardPage() {
                     viewMode={viewMode}
                     badge={`Shared by ${form.user.name || form.user.email}`}
                     onDuplicate={() => handleDuplicate(form.id)}
+                    onMove={
+                      form.isOwner ? () => setMoveFormId(form.id) : undefined
+                    }
                   />
                 ))}
               </FormGrid>
@@ -304,7 +311,9 @@ export default function DashboardPage() {
         <MoveFormDialog
           formId={moveFormId}
           currentCollectionId={
-            forms.find((f) => f.id === moveFormId)?.collection?.id || null
+            forms.find((f) => f.id === moveFormId)?.collection?.id ||
+            sharedForms.find((f) => f.id === moveFormId)?.collectionId ||
+            null
           }
           onClose={() => setMoveFormId(null)}
           onMoved={handleFormMoved}

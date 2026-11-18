@@ -1213,8 +1213,8 @@ export default function FormBuilderPage() {
 
             {!isOwner ? (
               <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                Only the form owner can change notifications, webhooks,
-                auto-responder and payment settings.
+                Only the form owner and team admins can change notifications,
+                webhooks, auto-responder and payment settings.
               </p>
             ) : (
               <>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { ownedFormsWhere } from "@/lib/form-access";
 import { authorizeApiRequest } from "@/lib/api-auth";
 import { parseQuestionsPayload, replaceFormQuestions } from "@/lib/form-questions";
 
@@ -15,7 +16,7 @@ export async function PUT(req: Request, context: RouteContext) {
 
   const { formId } = await context.params;
   const form = await prisma.form.findFirst({
-    where: { id: formId, userId: auth.userId },
+    where: { id: formId, ...ownedFormsWhere(auth.userId) },
     select: { id: true },
   });
   if (!form) {
