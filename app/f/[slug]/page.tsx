@@ -81,7 +81,6 @@ export default async function PublicFormPage({
     paymentDescription: form.paymentDescription,
     paymentOptions: (form.paymentOptions as import("@/lib/types/payment").PaymentOption[] | null) ?? null,
     paymentSelectionMode: (form.paymentSelectionMode as import("@/lib/types/payment").PaymentSelectionMode) || "single",
-    removeBranding: form.removeBranding,
     questions: form.questions.map((q) => ({
       id: q.id,
       order: q.order,

@@ -232,7 +232,6 @@ export async function updateForm(
     paymentDescription?: string;
     paymentOptions?: PaymentOption[] | null;
     paymentSelectionMode?: PaymentSelectionMode;
-    removeBranding?: boolean;
   },
 ) {
   const user = await getCurrentUser();
@@ -280,9 +279,6 @@ export async function updateForm(
   }
   if (data.autoResponderEnabled === true) {
     assertPlanFeature(plan, "customBranding", "Auto-responder emails");
-  }
-  if (data.removeBranding === true) {
-    assertPlanFeature(plan, "customBranding", "Custom branding");
   }
   if (data.paymentEnabled === true) {
     assertPlanFeature(plan, "paymentCollection", "Payments");
