@@ -5,7 +5,7 @@ import { FormStatus, FormThemeMode, Prisma, QuestionType } from "@prisma/client"
 
 import { prisma } from "@/lib/db";
 import { getCurrentUser } from "@/lib/session";
-import { generateSlug } from "@/lib/utils";
+import { generateSlug, validateFormSlug } from "@/lib/utils";
 import { ensureDefaultCollection } from "@/lib/collections";
 import { getCurrency } from "@/config/currencies";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
@@ -296,6 +296,50 @@ export async function updateForm(
   revalidatePath(`/dashboard/forms/${formId}`);
   revalidatePath("/dashboard");
   return updated;
+}
+
+/**
+ * Changes a form's public URL slug. Returns an error message instead of
+ * throwing so the builder can show it (server action errors are masked in
+ * production). Old links stop working; no redirect is kept.
+ */
+export async function updateFormSlug(
+  formId: string,
+  slug: string,
+): Promise<{ slug: string } | { error: string }> {
+  const user = await getCurrentUser();
+  if (!user?.id) return { error: "Unauthorized" };
+
+  const form = await prisma.form.findFirst({
+    where: { id: formId, ...editableFormsWhere(user.id) },
+  });
+  if (!form) return { error: "Form not found" };
+
+  if (!(await isFormOwner(form, user.id))) {
+    return {
+      error: "Only the form owner and team admins can change the form URL",
+    };
+  }
+
+  if (typeof slug !== "string") return { error: "Invalid URL" };
+  const invalid = validateFormSlug(slug);
+  if (invalid) return { error: invalid };
+  if (slug === form.slug) return { slug };
+
+  try {
+    await prisma.form.update({ where: { id: formId }, data: { slug } });
+  } catch (error: any) {
+    if (error?.code === "P2002") {
+      return { error: "That URL is already taken" };
+    }
+    throw error;
+  }
+
+  revalidatePath(`/f/${form.slug}`);
+  revalidatePath(`/f/${slug}`);
+  revalidatePath(`/dashboard/forms/${formId}`);
+  revalidatePath("/dashboard");
+  return { slug };
 }
 
 export async function deleteForm(formId: string) {
