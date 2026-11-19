@@ -3,13 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { getFormById, saveQuestions, updateForm, publishDraftQuestions } from "@/actions/form-actions";
+import {
+  getFormById,
+  saveQuestions,
+  updateForm,
+  updateFormSlug,
+  publishDraftQuestions,
+} from "@/actions/form-actions";
 import { FormStatus, FormThemeMode, QuestionType } from "@prisma/client";
 import {
   ArrowLeft,
   ChevronDown,
   DollarSign,
   Eye,
+  Link2,
   Monitor,
   Moon,
   Palette,
@@ -32,7 +39,13 @@ import {
 } from "@/config/currencies";
 import type { LogicRule } from "@/lib/types/logic";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
-import { contrastColor } from "@/lib/utils";
+import {
+  contrastColor,
+  FORM_SLUG_MAX_LENGTH,
+  getPublicBaseUrl,
+  normalizeFormSlugInput,
+  validateFormSlug,
+} from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -157,6 +170,9 @@ export default function FormBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState("");
   const [formSlug, setFormSlug] = useState("");
+  const [slugDraft, setSlugDraft] = useState("");
+  const [slugError, setSlugError] = useState<string | null>(null);
+  const [savingSlug, setSavingSlug] = useState(false);
   const [formStatus, setFormStatus] = useState<FormStatus>(FormStatus.DRAFT);
   const [formThemeMode, setFormThemeMode] = useState<FormThemeMode>(
     FormThemeMode.LIGHT,
@@ -216,6 +232,7 @@ export default function FormBuilderPage() {
       }
       setFormTitle(form.title);
       setFormSlug(form.slug);
+      setSlugDraft(form.slug);
       setIsOwner(form.isOwner);
       setFormStatus(form.status);
       setFormThemeMode(form.themeMode);
@@ -589,6 +606,34 @@ export default function FormBuilderPage() {
       toast.error("Failed to update title");
     }
   }, [formId, formTitle]);
+
+  const handleSlugSave = useCallback(
+    async (e: React.FormEvent<HTMLFormElement>) => {
+      e.preventDefault();
+      const invalid = validateFormSlug(slugDraft);
+      if (invalid) {
+        setSlugError(invalid);
+        return;
+      }
+      setSavingSlug(true);
+      try {
+        const result = await updateFormSlug(formId, slugDraft);
+        if ("error" in result) {
+          setSlugError(result.error);
+          return;
+        }
+        setFormSlug(result.slug);
+        setSlugDraft(result.slug);
+        setSlugError(null);
+        toast.success("Form URL updated");
+      } catch {
+        setSlugError("Failed to update the form URL");
+      } finally {
+        setSavingSlug(false);
+      }
+    },
+    [formId, slugDraft],
+  );
 
   const handlePublishToggle = useCallback(async () => {
     const newStatus =
@@ -1211,11 +1256,66 @@ export default function FormBuilderPage() {
 
             {!isOwner ? (
               <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
-                Only the form owner and team admins can change notifications,
-                webhooks, auto-responder and payment settings.
+                Only the form owner and team admins can change the form URL,
+                notifications, webhooks, auto-responder and payment settings.
               </p>
             ) : (
               <>
+            {/* Form URL */}
+            <div className="space-y-3">
+              <Label
+                htmlFor="form-slug"
+                className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+              >
+                <Link2 className="mr-1 inline size-3" />
+                Form URL
+              </Label>
+              <form
+                className="flex gap-2"
+                onSubmit={handleSlugSave}
+              >
+                <div className="flex h-9 min-w-0 flex-1 items-center rounded-md border bg-background pl-2 text-sm focus-within:ring-1 focus-within:ring-ring">
+                  <span className="shrink-0 text-muted-foreground">/f/</span>
+                  <input
+                    id="form-slug"
+                    value={slugDraft}
+                    onChange={(e) => {
+                      setSlugDraft(normalizeFormSlugInput(e.target.value));
+                      setSlugError(null);
+                    }}
+                    placeholder="my-form"
+                    maxLength={FORM_SLUG_MAX_LENGTH}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="h-full min-w-0 flex-1 bg-transparent pr-2 outline-none"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="h-9"
+                  disabled={savingSlug || slugDraft === formSlug}
+                >
+                  {savingSlug ? "Saving…" : "Save"}
+                </Button>
+              </form>
+              {slugError ? (
+                <p className="text-xs text-destructive">{slugError}</p>
+              ) : (
+                <p className="break-all text-xs text-muted-foreground">
+                  {getPublicBaseUrl()}/f/{slugDraft || formSlug}
+                </p>
+              )}
+              {formStatus === FormStatus.PUBLISHED && (
+                <p className="text-xs text-amber-600 dark:text-amber-500">
+                  Changing the URL of a published form breaks existing links,
+                  QR codes and embeds.
+                </p>
+              )}
+            </div>
+
+            <Separator className="my-4" />
+
             {/* Notifications */}
             <div className="space-y-3">
               <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">

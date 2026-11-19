@@ -202,6 +202,38 @@ export function generateSlug(): string {
   return result;
 }
 
+export const FORM_SLUG_MIN_LENGTH = 3;
+export const FORM_SLUG_MAX_LENGTH = 60;
+
+/**
+ * For the slug field while typing: lowercases and replaces anything other than
+ * a-z, 0-9 and "-" with a hyphen, collapsing repeats. The result is shown to
+ * the user, so nothing changes without them seeing it.
+ */
+export function normalizeFormSlugInput(input: string): string {
+  return input
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/-{2,}/g, "-");
+}
+
+/** Returns an error message for an invalid slug, or null if valid. */
+export function validateFormSlug(slug: string): string | null {
+  if (slug.length < FORM_SLUG_MIN_LENGTH) {
+    return `The URL must be at least ${FORM_SLUG_MIN_LENGTH} characters`;
+  }
+  if (slug.length > FORM_SLUG_MAX_LENGTH) {
+    return `The URL must be at most ${FORM_SLUG_MAX_LENGTH} characters`;
+  }
+  if (slug.startsWith("-") || slug.endsWith("-")) {
+    return "The URL can't start or end with a hyphen";
+  }
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return "Use only lowercase letters, numbers and hyphens";
+  }
+  return null;
+}
+
 /**
  * Returns "white" or "black" depending on which contrasts better against the
  * given hex colour.  Uses the W3C relative luminance formula.
