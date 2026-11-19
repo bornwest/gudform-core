@@ -22,6 +22,41 @@ If this is useful, **[star the public repo](https://github.com/gudlab/gudform-co
   <a href="https://www.gudform.com">Watch the full reel on gudform.com</a>
 </p>
 
+## Born West changes
+
+`bw-main` is Born West's fork of GudForm. It branches from upstream at [`a44ca31`](https://github.com/bornwest/gudform-core/commit/a44ca31) ("Add product stills to the README"). Everything below was added on top of that.
+
+### Teams, collections and ownership
+
+- **Collections shared with teams** ([#5](https://github.com/bornwest/gudform-core/pull/5)): forms reach a team through the collections assigned to it. The dashboard has a "Shared with me" section for forms from your teams. The access rules live in `lib/form-access.ts`.
+- **Owner-only settings** ([#5](https://github.com/bornwest/gudform-core/pull/5)): team members can edit shared forms, but only the owner can change the redirect URL, notifications, webhooks, auto-responder and payments.
+- **Admins can file forms into shared collections** ([#7](https://github.com/bornwest/gudform-core/pull/7)): team owners and admins can create forms in, and move forms into, collections shared with their team. The same applies through the REST API and MCP.
+- **Shared collections in the Collections tab** ([#8](https://github.com/bornwest/gudform-core/pull/8)): collections shared with your teams now show up alongside your own.
+- **Team admins as form co-owners** ([#11](https://github.com/bornwest/gudform-core/pull/11)): owners and admins of a team a form is shared with get the same rights as the form's creator, including owner-only settings, moving forms, and the API and MCP. Only the creator can delete a form. See `isFormOwner` in `lib/form-ownership.ts`.
+
+### Form builder and renderer
+
+- **Welcome screen image** ([#9](https://github.com/bornwest/gudform-core/pull/9)): welcome screens can show an image on the left or right, set by URL or upload. Uploads for welcome images and choice images share one helper, `lib/upload-client.ts`.
+- **Default welcome image** ([#10](https://github.com/bornwest/gudform-core/pull/10)): welcome screens without an image use `public/_static/images/welcome-default.png`.
+- **No GudForm branding** ([#12](https://github.com/bornwest/gudform-core/pull/12)): removed the "Create your own form" link from thank-you screens, along with the `removeBranding` setting. The migration `20261118000000_remove_form_branding` drops the `removeBranding` column.
+- **Color fields open the picker** ([#13](https://github.com/bornwest/gudform-core/pull/13)): the hex field next to the title and body color swatches is read-only, and clicking it opens the color picker.
+- **Custom form URLs** ([#14](https://github.com/bornwest/gudform-core/pull/14)): owners and admins can set the slug in `/f/<slug>` from the builder's Settings sidebar, e.g. `/f/join-born-west-ios`. Slugs use lowercase letters, numbers and hyphens, 3–60 characters, and must be unique. Changing a slug breaks old links.
+
+### Storage
+
+- **AWS S3 uploads** ([#6](https://github.com/bornwest/gudform-core/pull/6)): when all four of `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and `S3_BUCKET_NAME` are set, uploads go to S3 and the other storage settings are ignored for new files. `S3_PUBLIC_URL` and `S3_KEY_PREFIX` are optional; see `.env.example`. Uploaded files no longer expire, and the cleanup cron job (`/api/cron/cleanup-files`) was removed.
+
+### Admin and navigation
+
+These were committed straight to `bw-main`, not through PRs.
+
+- **Admin users page**: shows each user's role and drops the plan and billing-period columns and the "Gift" plan button.
+- **Sidebar**: "Users" moved into the main options. Admin Panel, Review Templates, Templates, Storage and Homepage are hidden outside the hosted SaaS edition.
+
+### Deployment
+
+- **Deploy on push** (committed straight to `bw-main`): pushing to `bw-main` runs `.github/workflows/deploy.yml`, which connects to the server over SSH and runs its `deploy` script. Settings: `HOST`, `USERNAME` and `PORT` as repository variables, `SSH_KEY` as a secret.
+
 ## Hosted vs self-host
 
 | | Hosted SaaS | OSS / self-host |
