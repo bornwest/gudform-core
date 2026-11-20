@@ -41,6 +41,7 @@ If this is useful, **[star the public repo](https://github.com/gudlab/gudform-co
 - **No GudForm branding** ([#12](https://github.com/bornwest/gudform-core/pull/12)): removed the "Create your own form" link from thank-you screens, along with the `removeBranding` setting. The migration `20261118000000_remove_form_branding` drops the `removeBranding` column.
 - **Color fields open the picker** ([#13](https://github.com/bornwest/gudform-core/pull/13)): the hex field next to the title and body color swatches is read-only, and clicking it opens the color picker.
 - **Custom form URLs** ([#14](https://github.com/bornwest/gudform-core/pull/14)): owners and admins can set the slug in `/f/<slug>` from the builder's Settings sidebar, e.g. `/f/join-born-west-ios`. Slugs use lowercase letters, numbers and hyphens, 3–60 characters, and must be unique. Changing a slug breaks old links.
+- **Closing forms**: a published form can be closed and reopened from the builder header. It also closes automatically after a close date and time, or once it reaches a response limit; both are set in the Closing section of the Settings sidebar. Visitors to a closed form see a "closed" page instead of "not found". Owners and admins can write their own message for that page; blank lines start paragraphs and `**bold**` / `*italics*` work. Closed forms keep unpublished edits as drafts, the same as published forms. The migration `20261120000000_add_form_closed_message` adds the `closedMessage` column.
 
 ### Storage
 
