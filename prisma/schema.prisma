@@ -154,6 +154,7 @@ model Form {
   notifyOnResponse Boolean      @default(true)
   closeDate       DateTime?
   responseLimit   Int?
+  closedMessage   String?       @db.Text
 
   webhookUrl           String?
   webhookSecret        String?

@@ -89,6 +89,7 @@ export function usableCollectionsWhere(
 
 export const OWNER_ONLY_FORM_FIELDS = [
   "redirectUrl",
+  "closedMessage",
   "notifyOnResponse",
   "webhookUrl",
   "webhookSecret",
