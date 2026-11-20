@@ -6,6 +6,10 @@ export type ScreenImagePosition = "left" | "right";
 /** Shown on the welcome screen when no image has been set. */
 export const DEFAULT_WELCOME_IMAGE = "/_static/images/welcome-default.png";
 
+/** Shown on a closed form's page when the owner hasn't set a message. */
+export const DEFAULT_CLOSED_MESSAGE =
+  "This form is no longer accepting responses.";
+
 export interface ScreenFormat {
   align: ScreenAlign;
   titleSize: ScreenTitleSize;

@@ -3,8 +3,15 @@ import { notFound } from "next/navigation";
 
 import { headers } from "next/headers";
 
-import { getPreviewForm, getPublicForm, recordFormView } from "@/actions/form-actions";
+import {
+  getClosedPublicForm,
+  getPreviewForm,
+  getPublicForm,
+  recordFormView,
+} from "@/actions/form-actions";
 import { FormRenderer } from "@/components/form-renderer/form-renderer";
+
+import { FormClosed } from "./form-closed";
 
 interface FormPageProps {
   params: Promise<{
@@ -28,7 +35,10 @@ export async function generateMetadata({
     : await getPublicForm(slug);
 
   if (!form) {
-    return { title: "Form Not Found" };
+    const closed = preview === "true" ? null : await getClosedPublicForm(slug);
+    return closed
+      ? { title: closed.title, description: "This form is closed" }
+      : { title: "Form Not Found" };
   }
 
   return {
@@ -51,6 +61,16 @@ export default async function PublicFormPage({
     : await getPublicForm(slug);
 
   if (!form) {
+    const closed = isPreview ? null : await getClosedPublicForm(slug);
+    if (closed) {
+      return (
+        <FormClosed
+          title={closed.title}
+          themeMode={closed.themeMode}
+          message={closed.closedMessage}
+        />
+      );
+    }
     notFound();
   }
 

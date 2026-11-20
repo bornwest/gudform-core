@@ -226,6 +226,7 @@ export async function updateForm(
     autoResponderMessage?: string;
     closeDate?: Date | null;
     responseLimit?: number | null;
+    closedMessage?: string;
     paymentEnabled?: boolean;
     paymentAmount?: number;
     paymentCurrency?: string;
@@ -247,6 +248,13 @@ export async function updateForm(
     !(await isFormOwner(form, user.id))
   ) {
     throw new Error("Only the form owner can change these settings");
+  }
+
+  if (
+    data.responseLimit != null &&
+    (!Number.isInteger(data.responseLimit) || data.responseLimit < 1)
+  ) {
+    throw new Error("Response limit must be a whole number of 1 or more");
   }
 
   // Validate payment options if provided
@@ -271,6 +279,9 @@ export async function updateForm(
   const updateData: any = { ...data };
   if (data.webhookUrl === "") updateData.webhookUrl = null;
   if (data.webhookSecret === "") updateData.webhookSecret = null;
+  if (data.closedMessage !== undefined) {
+    updateData.closedMessage = data.closedMessage.trim() || null;
+  }
 
   // Features follow the form owner's plan, not a team member's.
   const plan = await getEffectivePlanConfig(form.userId);
@@ -284,7 +295,8 @@ export async function updateForm(
     assertPlanFeature(plan, "paymentCollection", "Payments");
   }
 
-  if (data.status === "PUBLISHED" && form.status !== "PUBLISHED") {
+  // Reopening a closed form keeps its original publish date.
+  if (data.status === "PUBLISHED" && form.status === "DRAFT") {
     updateData.publishedAt = new Date();
   }
 
@@ -455,8 +467,9 @@ export async function saveQuestions(
   });
   if (!form) throw new Error("Form not found");
 
-  // Published forms save to draftQuestions to avoid impacting live form
-  if (form.status === "PUBLISHED") {
+  // Published and closed forms save to draftQuestions so the live version
+  // (and what a reopened form shows) isn't changed until "Publish Changes".
+  if (form.status !== "DRAFT") {
     return saveDraftQuestions(formId, questions);
   }
 
@@ -940,19 +953,57 @@ export async function getPublicForm(slug: string) {
   });
 
   if (!form) return null;
+  if (await hasReachedCloseCondition(form)) return null;
 
-  // Check if form is closed by date
-  if (form.closeDate && new Date() > form.closeDate) return null;
+  return form;
+}
 
-  // Check response limit
+/** True once a published form has passed its close date or response limit. */
+async function hasReachedCloseCondition(form: {
+  id: string;
+  closeDate: Date | null;
+  responseLimit: number | null;
+}): Promise<boolean> {
+  if (form.closeDate && new Date() > form.closeDate) return true;
   if (form.responseLimit) {
     const responseCount = await prisma.formResponse.count({
       where: { formId: form.id, ...COUNTABLE_RESPONSE_WHERE },
     });
-    if (responseCount >= form.responseLimit) return null;
+    if (responseCount >= form.responseLimit) return true;
   }
+  return false;
+}
 
-  return form;
+/**
+ * For the public page when getPublicForm returns nothing: returns what the
+ * "form closed" page needs if the form was closed by hand, passed its close
+ * date or hit its response limit. Returns null for drafts and unknown slugs,
+ * which stay "not found".
+ */
+export async function getClosedPublicForm(slug: string) {
+  const form = await prisma.form.findFirst({
+    where: { slug, status: { in: ["PUBLISHED", "CLOSED"] } },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      themeMode: true,
+      closedMessage: true,
+      closeDate: true,
+      responseLimit: true,
+    },
+  });
+  if (!form) return null;
+
+  const closed =
+    form.status === "CLOSED" || (await hasReachedCloseCondition(form));
+  if (!closed) return null;
+
+  return {
+    title: form.title,
+    themeMode: form.themeMode,
+    closedMessage: form.closedMessage,
+  };
 }
 
 export async function createPendingResponse(

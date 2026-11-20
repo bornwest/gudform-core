@@ -39,6 +39,7 @@ import {
 } from "@/config/currencies";
 import type { LogicRule } from "@/lib/types/logic";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
+import { DEFAULT_CLOSED_MESSAGE } from "@/lib/screen-format";
 import {
   contrastColor,
   FORM_SLUG_MAX_LENGTH,
@@ -160,6 +161,12 @@ function BuilderError({
 // Main builder page
 // ---------------------------------------------------------------------------
 
+/** Formats a Date as a datetime-local input value in the user's time zone. */
+function toDateTimeLocal(date: Date): string {
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
 export default function FormBuilderPage() {
   const params = useParams();
   const router = useRouter();
@@ -173,6 +180,14 @@ export default function FormBuilderPage() {
   const [slugDraft, setSlugDraft] = useState("");
   const [slugError, setSlugError] = useState<string | null>(null);
   const [savingSlug, setSavingSlug] = useState(false);
+  // datetime-local value ("YYYY-MM-DDTHH:mm" in local time), "" when unset
+  const [closeDate, setCloseDate] = useState("");
+  const [responseLimit, setResponseLimit] = useState("");
+  // Last saved values, so blurring an unchanged field doesn't save again
+  const savedCloseDateRef = useRef("");
+  const savedResponseLimitRef = useRef("");
+  const [closedMessage, setClosedMessage] = useState("");
+  const savedClosedMessageRef = useRef("");
   const [formStatus, setFormStatus] = useState<FormStatus>(FormStatus.DRAFT);
   const [formThemeMode, setFormThemeMode] = useState<FormThemeMode>(
     FormThemeMode.LIGHT,
@@ -235,6 +250,18 @@ export default function FormBuilderPage() {
       setSlugDraft(form.slug);
       setIsOwner(form.isOwner);
       setFormStatus(form.status);
+      const loadedCloseDate = form.closeDate
+        ? toDateTimeLocal(new Date(form.closeDate))
+        : "";
+      const loadedResponseLimit = form.responseLimit
+        ? String(form.responseLimit)
+        : "";
+      setCloseDate(loadedCloseDate);
+      setResponseLimit(loadedResponseLimit);
+      savedCloseDateRef.current = loadedCloseDate;
+      savedResponseLimitRef.current = loadedResponseLimit;
+      setClosedMessage(form.closedMessage || "");
+      savedClosedMessageRef.current = form.closedMessage || "";
       setFormThemeMode(form.themeMode);
       setFormThemeColor(form.themeColor || "#6366f1");
       setFormBgColor(form.backgroundColor || "#ffffff");
@@ -278,9 +305,9 @@ export default function FormBuilderPage() {
           SubscriptionPlan.FREE,
       );
 
-      // For published forms with draft changes, load from draftQuestions
+      // For published or closed forms with draft changes, load from draftQuestions
       const hasDraftQuestions =
-        form.status === "PUBLISHED" &&
+        form.status !== "DRAFT" &&
         form.draftQuestions &&
         Array.isArray(form.draftQuestions);
       setHasDraft(!!hasDraftQuestions);
@@ -417,7 +444,7 @@ export default function FormBuilderPage() {
         return fullyResolved;
       });
 
-      if (formStatus === FormStatus.PUBLISHED) {
+      if (formStatus !== FormStatus.DRAFT) {
         setHasDraft(true);
       }
       toast.success("Changes saved");
@@ -668,6 +695,72 @@ export default function FormBuilderPage() {
     }
   }, [formId, formStatus, handleSave, hasDraft]);
 
+  const saveCloseDate = useCallback(
+    async (value: string) => {
+      if (value === savedCloseDateRef.current) return;
+      try {
+        await updateForm(formId, { closeDate: value ? new Date(value) : null });
+        savedCloseDateRef.current = value;
+        toast.success(value ? "Close date saved" : "Close date removed");
+      } catch {
+        toast.error("Failed to update close date");
+      }
+    },
+    [formId],
+  );
+
+  const saveResponseLimit = useCallback(
+    async (value: string) => {
+      const trimmed = value.trim();
+      if (trimmed === savedResponseLimitRef.current) return;
+      const limit = trimmed ? Number(trimmed) : null;
+      if (limit !== null && (!Number.isInteger(limit) || limit < 1)) {
+        toast.error("Response limit must be a whole number of 1 or more");
+        return;
+      }
+      try {
+        await updateForm(formId, { responseLimit: limit });
+        savedResponseLimitRef.current = trimmed;
+        toast.success(limit ? "Response limit saved" : "Response limit removed");
+      } catch {
+        toast.error("Failed to update response limit");
+      }
+    },
+    [formId],
+  );
+
+  const saveClosedMessage = useCallback(
+    async (value: string) => {
+      const trimmed = value.trim();
+      if (trimmed === savedClosedMessageRef.current) return;
+      try {
+        await updateForm(formId, { closedMessage: trimmed });
+        savedClosedMessageRef.current = trimmed;
+        toast.success(trimmed ? "Closed message saved" : "Closed message reset");
+      } catch {
+        toast.error("Failed to update closed message");
+      }
+    },
+    [formId],
+  );
+
+  // Closing keeps the form's questions and drafts as they are; reopening
+  // puts the same live version back.
+  const handleCloseToggle = useCallback(async () => {
+    const closing = formStatus === FormStatus.PUBLISHED;
+    const newStatus = closing ? FormStatus.CLOSED : FormStatus.PUBLISHED;
+    try {
+      setPublishing(true);
+      await updateForm(formId, { status: newStatus });
+      setFormStatus(newStatus);
+      toast.success(closing ? "Form closed" : "Form reopened");
+    } catch {
+      toast.error(closing ? "Failed to close form" : "Failed to reopen form");
+    } finally {
+      setPublishing(false);
+    }
+  }, [formId, formStatus]);
+
   // -----------------------------------------------------------------------
   // Compute display numbers (excluding screens)
   // -----------------------------------------------------------------------
@@ -826,7 +919,28 @@ export default function FormBuilderPage() {
             </Button>
           )}
 
-          {formStatus === FormStatus.PUBLISHED ? (
+          {formStatus === FormStatus.PUBLISHED && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleCloseToggle}
+              disabled={publishing}
+            >
+              Close form
+            </Button>
+          )}
+
+          {formStatus === FormStatus.CLOSED && (
+            <Button
+              size="sm"
+              onClick={handleCloseToggle}
+              disabled={publishing}
+            >
+              Reopen
+            </Button>
+          )}
+
+          {formStatus !== FormStatus.DRAFT ? (
             <Button
               size="sm"
               onClick={async () => {
@@ -1254,6 +1368,94 @@ export default function FormBuilderPage() {
 
             <Separator className="my-4" />
 
+            {/* Closing */}
+            <div className="space-y-3">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Closing
+              </Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="close-date" className="text-sm">
+                  Close date
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="close-date"
+                    type="datetime-local"
+                    value={closeDate}
+                    onChange={(e) => setCloseDate(e.target.value)}
+                    onBlur={() => saveCloseDate(closeDate)}
+                    className="h-9 min-w-0 flex-1 text-sm"
+                  />
+                  {closeDate && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-9 shrink-0"
+                      aria-label="Remove close date"
+                      onClick={() => {
+                        setCloseDate("");
+                        saveCloseDate("");
+                      }}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  )}
+                </div>
+                {closeDate && new Date(closeDate) < new Date() ? (
+                  <p className="text-xs text-amber-600 dark:text-amber-500">
+                    This date has passed, so the form is closed.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    The form closes automatically at this time.
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="response-limit" className="text-sm">
+                  Response limit
+                </Label>
+                <Input
+                  id="response-limit"
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder="No limit"
+                  value={responseLimit}
+                  onChange={(e) => setResponseLimit(e.target.value)}
+                  onBlur={() => saveResponseLimit(responseLimit)}
+                  className="h-9 text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  The form closes once it has this many responses.
+                </p>
+              </div>
+              {isOwner && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="closed-message" className="text-sm">
+                    Closed message
+                  </Label>
+                  <Textarea
+                    id="closed-message"
+                    value={closedMessage}
+                    onChange={(e) => setClosedMessage(e.target.value)}
+                    onBlur={() => saveClosedMessage(closedMessage)}
+                    placeholder={DEFAULT_CLOSED_MESSAGE}
+                    rows={3}
+                    className="text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shown to visitors once the form is closed. Blank lines
+                    start new paragraphs; **bold** and *italics* work.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <Separator className="my-4" />
+
             {!isOwner ? (
               <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
                 Only the form owner and team admins can change the form URL,
@@ -1306,7 +1508,7 @@ export default function FormBuilderPage() {
                   {getPublicBaseUrl()}/f/{slugDraft || formSlug}
                 </p>
               )}
-              {formStatus === FormStatus.PUBLISHED && (
+              {formStatus !== FormStatus.DRAFT && (
                 <p className="text-xs text-amber-600 dark:text-amber-500">
                   Changing the URL of a published form breaks existing links,
                   QR codes and embeds.
