@@ -141,10 +141,53 @@ export async function createPendingPaymentResponse(
   return response;
 }
 
+/**
+ * Optional timing/status for importing historical responses (REST API).
+ * A response with `partial` or any explicit date never fires notifications,
+ * webhooks or integrations.
+ */
+export type ResponseTimingOptions = {
+  startedAt?: Date;
+  completedAt?: Date;
+  partial?: boolean;
+};
+
+export function parseResponseTiming(
+  body: Record<string, unknown>,
+): { ok: true; options: ResponseTimingOptions } | { ok: false; error: string } {
+  const options: ResponseTimingOptions = {};
+
+  // completedAt: a date -> completed then; explicit null -> in progress; absent -> completed now.
+  if (body.completedAt === null) options.partial = true;
+
+  for (const key of ["startedAt", "completedAt"] as const) {
+    const raw = body[key];
+    if (raw === undefined || raw === null) continue;
+    const date = typeof raw === "string" ? new Date(raw) : null;
+    if (!date || Number.isNaN(date.getTime())) {
+      return { ok: false, error: `${key} must be an ISO 8601 date string` };
+    }
+    options[key] = date;
+  }
+
+  if (options.completedAt && !options.startedAt) {
+    options.startedAt = options.completedAt;
+  }
+  if (
+    options.startedAt &&
+    options.completedAt &&
+    options.completedAt < options.startedAt
+  ) {
+    return { ok: false, error: "completedAt cannot be before startedAt" };
+  }
+  return { ok: true, options };
+}
+
 export async function createCompletedFormResponse(
   formId: string,
   answers: { questionId: string; value: string }[],
   metadata?: FormResponseMetadata,
+  options?: ResponseTimingOptions,
 ) {
   answers = stripNulFromAnswers(answers);
   metadata = stripNulFromMetadata(metadata);
@@ -167,6 +210,34 @@ export async function createCompletedFormResponse(
 
   if (!form) throw new Error("Form not found");
 
+  if (options?.partial) {
+    // In-progress import: like a saved draft, so no required-field validation,
+    // no response-limit check and no post-submission actions.
+    const known = new Set(form.questions.map((q) => q.id));
+    const unknown = answers.find((a) => !known.has(a.questionId));
+    if (unknown) {
+      throw new Error(`Answer references unknown question: ${unknown.questionId}`);
+    }
+    return prisma.formResponse.create({
+      data: {
+        formId,
+        formVersionId: form.formVersions[0]?.id ?? null,
+        startedAt: options.startedAt,
+        completedAt: null,
+        ipAddress: metadata?.ipAddress,
+        userAgent: metadata?.userAgent,
+        referrer: metadata?.referrer,
+        answers: {
+          create: answers.map((a) => ({
+            questionId: a.questionId,
+            value: a.value,
+          })),
+        },
+      },
+    });
+  }
+
+  const completedAt = options?.completedAt ?? new Date();
   const answerValidation = validateAnswers(
     form.questions as Parameters<typeof validateAnswers>[0],
     answers,
@@ -199,7 +270,7 @@ export async function createCompletedFormResponse(
           where: { id: draft.id },
           data: {
             formVersionId: form.formVersions[0]?.id ?? null,
-            completedAt: new Date(),
+            completedAt,
             resumeToken: null,
             ipAddress: metadata.ipAddress,
             userAgent: metadata.userAgent,
@@ -219,7 +290,8 @@ export async function createCompletedFormResponse(
       data: {
         formId,
         formVersionId: form.formVersions[0]?.id ?? null,
-        completedAt: new Date(),
+        startedAt: options?.startedAt,
+        completedAt,
         ipAddress: metadata?.ipAddress,
         userAgent: metadata?.userAgent,
         referrer: metadata?.referrer,
@@ -233,10 +305,13 @@ export async function createCompletedFormResponse(
     });
   });
 
-  const { triggerPostSubmissionActions } = await import(
-    "@/lib/post-submission"
-  );
-  triggerPostSubmissionActions(form, answers, response.id).catch(() => {});
+  // Imported (back-dated) responses must not re-notify or re-fire webhooks.
+  if (!options?.startedAt && !options?.completedAt) {
+    const { triggerPostSubmissionActions } = await import(
+      "@/lib/post-submission"
+    );
+    triggerPostSubmissionActions(form, answers, response.id).catch(() => {});
+  }
 
   return response;
 }

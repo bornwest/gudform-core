@@ -154,6 +154,15 @@ paths:
                 answers:
                   type: array
                   items: { $ref: "#/components/schemas/Answer" }
+                startedAt:
+                  type: string
+                  format: date-time
+                  description: Original start time, for importing historical responses.
+                completedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: Original completion time. Send null to record an in-progress (partial) response, which skips required-field validation. Omit for a normal submission completed now.
       responses:
         "201":
           description: Submitted

@@ -536,6 +536,13 @@ export default function ApiReferencePage() {
         <code>questionId</code> plus <code>value</code>. Closed forms are
         rejected.
       </p>
+      <p>
+        To import historical responses, you can also send{" "}
+        <code>startedAt</code> and <code>completedAt</code> (ISO 8601). Send{" "}
+        <code>completedAt: null</code> to record an in-progress response
+        (answers are not validated). Responses sent with a date or as
+        in-progress never trigger notifications, webhooks or integrations.
+      </p>
       <EndpointBadge method="POST" path="/api/v1/forms/:formId/responses" />
 
       <CodeBlock title="Request" language="JSON">

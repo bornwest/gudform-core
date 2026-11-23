@@ -1060,7 +1060,8 @@ export async function getFormResponses(formId: string) {
   if (!form) throw new Error("Form not found");
 
   const responses = await prisma.formResponse.findMany({
-    where: { formId, ...COUNTABLE_RESPONSE_WHERE },
+    // Include in-progress (partial) responses too; the UI badges them "Partial".
+    where: { formId },
     include: {
       answers: {
         include: { question: true },
