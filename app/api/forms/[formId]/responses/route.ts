@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { prisma } from "@/lib/db";
+import { stripNulFromAnswers } from "@/lib/form-response";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 // Public endpoint for submitting form responses
@@ -9,7 +10,10 @@ export async function POST(
   { params }: { params: Promise<{ formId: string }> },
 ) {
   try {
-    const { answers } = await req.json();
+    const body = await req.json();
+    const answers = Array.isArray(body.answers)
+      ? stripNulFromAnswers(body.answers)
+      : body.answers;
     const { formId } = await params;
 
     const form = await prisma.form.findFirst({

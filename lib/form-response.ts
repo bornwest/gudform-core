@@ -12,12 +12,39 @@ export type FormResponseMetadata = {
   resumeToken?: string;
 };
 
+// Postgres text columns can't hold NUL (\u0000). It arrives in answers via
+// text pasted from binaries, PDFs or legacy systems and would make the
+// insert fail, so strip it before validating or saving.
+function stripNul<T>(value: T): T {
+  return (typeof value === "string" ? value.replace(/\u0000/g, "") : value) as T;
+}
+
+export function stripNulFromAnswers<T extends { value: string }>(
+  answers: T[],
+): T[] {
+  return answers.map((answer) => ({ ...answer, value: stripNul(answer.value) }));
+}
+
+function stripNulFromMetadata(
+  metadata?: FormResponseMetadata,
+): FormResponseMetadata | undefined {
+  if (!metadata) return metadata;
+  return {
+    ...metadata,
+    userAgent: stripNul(metadata.userAgent),
+    referrer: stripNul(metadata.referrer),
+  };
+}
+
 export async function createPendingPaymentResponse(
   formId: string,
   answers: { questionId: string; value: string }[],
   metadata?: FormResponseMetadata,
   selectedOptionIds?: string[],
 ) {
+  answers = stripNulFromAnswers(answers);
+  metadata = stripNulFromMetadata(metadata);
+
   const form = await prisma.form.findUnique({
     where: { id: formId },
     include: {
@@ -119,6 +146,9 @@ export async function createCompletedFormResponse(
   answers: { questionId: string; value: string }[],
   metadata?: FormResponseMetadata,
 ) {
+  answers = stripNulFromAnswers(answers);
+  metadata = stripNulFromMetadata(metadata);
+
   const form = await prisma.form.findUnique({
     where: { id: formId },
     include: {
@@ -216,6 +246,8 @@ export async function upsertFormDraft(
   answers: { questionId: string; value: string }[],
   resumeToken?: string,
 ) {
+  answers = stripNulFromAnswers(answers);
+
   const form = await prisma.form.findUnique({
     where: { id: formId },
     select: {
