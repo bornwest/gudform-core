@@ -1,5 +1,5 @@
-import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -16,7 +16,6 @@ type S3Config = {
   accessKeyId: string;
   secretAccessKey: string;
   bucket: string;
-  publicUrl: string;
   keyPrefix: string | null;
 };
 
@@ -31,9 +30,6 @@ function getS3Config(): S3Config | null {
     accessKeyId: S3_ACCESS_KEY_ID,
     secretAccessKey: S3_SECRET_ACCESS_KEY,
     bucket: S3_BUCKET_NAME,
-    publicUrl: (
-      env.S3_PUBLIC_URL ?? `https://${S3_BUCKET_NAME}.s3.${S3_REGION}.amazonaws.com`
-    ).replace(/\/+$/, ""),
     keyPrefix: env.S3_KEY_PREFIX?.replace(/^\/+|\/+$/g, "") || null,
   };
 }
@@ -114,15 +110,53 @@ export function getR2PublicUrl(): string {
   return env.R2_PUBLIC_URL.replace(/\/+$/, "");
 }
 
+/**
+ * The URL saved for an uploaded file. S3 files get an app URL
+ * (`/api/files/<key>`) that redirects to a short-lived signed URL, so the
+ * bucket can stay private and saved links never expire.
+ */
 export function getPublicFileUrl(key: string): string {
   const safeKey = sanitizeStorageKey(key);
-  if (isUsingS3()) {
-    return `${requireS3Config().publicUrl}/${safeKey}`;
-  }
   if (getStorageDriver() === "r2") {
     return `${getR2PublicUrl()}/${safeKey}`;
   }
   return `${env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "")}/api/files/${safeKey}`;
+}
+
+/** How long a signed S3 download URL stays valid. */
+export const SIGNED_URL_TTL_SECONDS = 300;
+
+/** Quote a filename for Content-Disposition, with an RFC 5987 UTF-8 form. */
+function contentDisposition(fileName: string): string {
+  const ascii = fileName.replace(/[^\x20-\x7e]|["\\]/g, "_");
+  const encoded = encodeURIComponent(fileName).replace(
+    /['()*]/g,
+    (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `inline; filename="${ascii}"; filename*=UTF-8''${encoded}`;
+}
+
+/**
+ * A short-lived signed GET URL for an object in the S3 bucket. `fileName`
+ * sets the name the browser uses when the file is saved.
+ */
+export async function getSignedS3FileUrl(
+  key: string,
+  options: { fileName?: string; contentType?: string } = {},
+): Promise<string> {
+  const safeKey = sanitizeStorageKey(key);
+  return getSignedUrl(
+    getS3Client(),
+    new GetObjectCommand({
+      Bucket: requireS3Config().bucket,
+      Key: safeKey,
+      ResponseContentDisposition: options.fileName
+        ? contentDisposition(options.fileName)
+        : undefined,
+      ResponseContentType: options.contentType,
+    }),
+    { expiresIn: SIGNED_URL_TTL_SECONDS },
+  );
 }
 
 export async function putStoredObject(options: {
