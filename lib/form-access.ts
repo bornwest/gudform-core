@@ -91,6 +91,7 @@ export const OWNER_ONLY_FORM_FIELDS = [
   "redirectUrl",
   "closedMessage",
   "notifyOnResponse",
+  "collectIpAddress",
   "webhookUrl",
   "webhookSecret",
   "autoResponderEnabled",

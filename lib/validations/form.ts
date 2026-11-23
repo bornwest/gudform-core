@@ -225,6 +225,7 @@ export const updateFormSchema = z.object({
     .optional()
     .or(z.literal("")),
   notifyOnResponse: z.boolean().optional(),
+  collectIpAddress: z.boolean().optional(),
   closeDate: z.string().datetime().optional().nullable(),
   responseLimit: z.number().int().positive().optional().nullable(),
 });

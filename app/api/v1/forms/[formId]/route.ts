@@ -56,6 +56,7 @@ export async function PATCH(req: Request, context: RouteContext) {
     "showProgressBar",
     "redirectUrl",
     "notifyOnResponse",
+    "collectIpAddress",
     "status",
     "collectionId",
   ];

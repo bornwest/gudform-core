@@ -121,7 +121,7 @@ export async function createPendingPaymentResponse(
       data: {
         formId,
         formVersionId: form.formVersions[0]?.id ?? null,
-        ipAddress: metadata?.ipAddress,
+        ipAddress: form.collectIpAddress ? metadata?.ipAddress : null,
         userAgent: metadata?.userAgent,
         referrer: metadata?.referrer,
         paymentStatus: "PENDING",
@@ -210,6 +210,8 @@ export async function createCompletedFormResponse(
 
   if (!form) throw new Error("Form not found");
 
+  const ipAddress = form.collectIpAddress ? (metadata?.ipAddress ?? null) : null;
+
   if (options?.partial) {
     // In-progress import: like a saved draft, so no required-field validation,
     // no response-limit check and no post-submission actions.
@@ -224,7 +226,7 @@ export async function createCompletedFormResponse(
         formVersionId: form.formVersions[0]?.id ?? null,
         startedAt: options.startedAt,
         completedAt: null,
-        ipAddress: metadata?.ipAddress,
+        ipAddress,
         userAgent: metadata?.userAgent,
         referrer: metadata?.referrer,
         answers: {
@@ -272,7 +274,7 @@ export async function createCompletedFormResponse(
             formVersionId: form.formVersions[0]?.id ?? null,
             completedAt,
             resumeToken: null,
-            ipAddress: metadata.ipAddress,
+            ipAddress,
             userAgent: metadata.userAgent,
             referrer: metadata.referrer,
             answers: {
@@ -292,7 +294,7 @@ export async function createCompletedFormResponse(
         formVersionId: form.formVersions[0]?.id ?? null,
         startedAt: options?.startedAt,
         completedAt,
-        ipAddress: metadata?.ipAddress,
+        ipAddress,
         userAgent: metadata?.userAgent,
         referrer: metadata?.referrer,
         answers: {
@@ -320,6 +322,7 @@ export async function upsertFormDraft(
   formId: string,
   answers: { questionId: string; value: string }[],
   resumeToken?: string,
+  requestIp?: string,
 ) {
   answers = stripNulFromAnswers(answers);
 
@@ -328,7 +331,8 @@ export async function upsertFormDraft(
     select: {
       id: true,
       status: true,
-      questions: { 
+      collectIpAddress: true,
+      questions: {
         where: { deletedAt: null },
         select: { id: true } 
       },
@@ -339,6 +343,7 @@ export async function upsertFormDraft(
 
   const allowed = new Set(form.questions.map((question) => question.id));
   const filtered = answers.filter((answer) => allowed.has(answer.questionId));
+  const ipAddress = form.collectIpAddress ? (requestIp ?? null) : null;
 
   if (resumeToken) {
     const existing = await prisma.formResponse.findFirst({
@@ -347,6 +352,10 @@ export async function upsertFormDraft(
     });
     if (existing) {
       await prisma.$transaction(async (tx) => {
+        await tx.formResponse.update({
+          where: { id: existing.id },
+          data: { ipAddress },
+        });
         await tx.answer.deleteMany({ where: { responseId: existing.id } });
         await tx.answer.createMany({
           data: filtered.map((answer) => ({
@@ -365,6 +374,7 @@ export async function upsertFormDraft(
     data: {
       formId,
       resumeToken: token,
+      ipAddress,
       answers: {
         create: filtered.map((answer) => ({
           questionId: answer.questionId,

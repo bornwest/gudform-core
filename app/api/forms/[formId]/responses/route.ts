@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { stripNulFromAnswers } from "@/lib/form-response";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
+import { getRequestIp } from "@/lib/request-ip";
 
 // Public endpoint for submitting form responses
 export async function POST(
@@ -50,7 +51,9 @@ export async function POST(
       data: {
         formId,
         completedAt: new Date(),
-        ipAddress: req.headers.get("x-forwarded-for") || null,
+        ipAddress: form.collectIpAddress
+          ? (getRequestIp(req.headers) ?? null)
+          : null,
         userAgent: req.headers.get("user-agent") || null,
         referrer: req.headers.get("referer") || null,
         answers: {

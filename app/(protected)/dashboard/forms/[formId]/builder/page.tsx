@@ -213,6 +213,7 @@ export default function FormBuilderPage() {
   const [displayMode, setDisplayMode] = useState<"conversational" | "classic">("conversational");
   const [showSettings, setShowSettings] = useState(false);
   const [notifyOnResponse, setNotifyOnResponse] = useState(true);
+  const [collectIpAddress, setCollectIpAddress] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
   const [webhookSecret, setWebhookSecret] = useState("");
   const [autoResponderEnabled, setAutoResponderEnabled] = useState(false);
@@ -286,6 +287,7 @@ export default function FormBuilderPage() {
       setFormBgColor(form.backgroundColor || "#ffffff");
       setDisplayMode((form.displayMode as "conversational" | "classic") || "conversational");
       setNotifyOnResponse(form.notifyOnResponse);
+      setCollectIpAddress(form.collectIpAddress);
       setWebhookUrl(form.webhookUrl || "");
       setWebhookSecret(form.webhookSecret || "");
       setAutoResponderEnabled(form.autoResponderEnabled);
@@ -1529,8 +1531,8 @@ export default function FormBuilderPage() {
             {!isOwner ? (
               <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
                 Only the form owner and team admins can change the form URL,
-                what happens after submission, notifications, webhooks,
-                auto-responder and payment settings.
+                what happens after submission, notifications, IP address
+                collection, webhooks, auto-responder and payment settings.
               </p>
             ) : (
               <>
@@ -1681,6 +1683,37 @@ export default function FormBuilderPage() {
                   onCheckedChange={async (checked) => {
                     setNotifyOnResponse(checked);
                     await updateForm(formId, { notifyOnResponse: checked });
+                  }}
+                />
+              </div>
+            </div>
+
+            <Separator className="my-4" />
+
+            {/* Privacy */}
+            <div className="space-y-3">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Privacy
+              </Label>
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium">Collect IP addresses</p>
+                  <p className="text-xs text-muted-foreground">
+                    Collect and store submitter IP addresses for analytics,
+                    fraud prevention, and geographic insights. Helps identify
+                    submission patterns and improve security.
+                  </p>
+                </div>
+                <Switch
+                  checked={collectIpAddress}
+                  onCheckedChange={async (checked) => {
+                    setCollectIpAddress(checked);
+                    try {
+                      await updateForm(formId, { collectIpAddress: checked });
+                    } catch {
+                      setCollectIpAddress(!checked);
+                      toast.error("Failed to update IP address collection");
+                    }
                   }}
                 />
               </div>

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { FormStatus, FormThemeMode, Prisma, QuestionType } from "@prisma/client";
 
 import { prisma } from "@/lib/db";
@@ -18,6 +19,7 @@ import {
 } from "@/lib/form-access";
 import { isFormOwner } from "@/lib/form-ownership";
 import { validateRedirectUrl } from "@/lib/url-validation";
+import { getRequestIp } from "@/lib/request-ip";
 import {
   createCompletedFormResponse,
   createPendingPaymentResponse,
@@ -228,6 +230,7 @@ export async function updateForm(
     closeDate?: Date | null;
     responseLimit?: number | null;
     closedMessage?: string;
+    collectIpAddress?: boolean;
     paymentEnabled?: boolean;
     paymentAmount?: number;
     paymentCurrency?: string;
@@ -1023,7 +1026,7 @@ export async function createPendingResponse(
   return createPendingPaymentResponse(
     formId,
     answers,
-    metadata,
+    await withRequestIp(metadata),
     selectedOptionIds,
   );
 }
@@ -1034,7 +1037,11 @@ export async function submitFormResponse(
   metadata?: FormResponseMetadata,
 ) {
   await requireTurnstileForPublicSubmit(metadata?.turnstileToken);
-  return createCompletedFormResponse(formId, answers, metadata);
+  return createCompletedFormResponse(
+    formId,
+    answers,
+    await withRequestIp(metadata),
+  );
 }
 
 export async function saveFormDraft(
@@ -1042,7 +1049,20 @@ export async function saveFormDraft(
   answers: { questionId: string; value: string }[],
   resumeToken?: string,
 ) {
-  return upsertFormDraft(formId, answers, resumeToken);
+  return upsertFormDraft(
+    formId,
+    answers,
+    resumeToken,
+    getRequestIp(await headers()),
+  );
+}
+
+// The IP always comes from the request, never from what the browser sends.
+// Whether it's stored is up to the form's collectIpAddress setting.
+async function withRequestIp(
+  metadata?: FormResponseMetadata,
+): Promise<FormResponseMetadata> {
+  return { ...metadata, ipAddress: getRequestIp(await headers()) };
 }
 
 export async function loadFormDraft(formId: string, resumeToken: string) {

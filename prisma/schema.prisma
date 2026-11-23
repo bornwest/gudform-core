@@ -164,6 +164,7 @@ model Form {
   closeDate       DateTime?
   responseLimit   Int?
   closedMessage   String?       @db.Text
+  collectIpAddress Boolean      @default(false)
 
   webhookUrl           String?
   webhookSecret        String?
