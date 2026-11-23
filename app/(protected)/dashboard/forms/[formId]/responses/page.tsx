@@ -11,7 +11,6 @@ import {
   Clock,
   Code,
   Copy,
-  DollarSign,
   Download,
   Edit,
   ExternalLink,
@@ -26,7 +25,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { cn, formatDate, truncate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { formatChoiceAnswerForDisplay } from "@/lib/choice-answers";
 import { formatPaymentAmount } from "@/config/currencies";
 import { Badge } from "@/components/ui/badge";
@@ -270,8 +269,8 @@ export default function FormResponsesPage() {
           <Skeleton className="size-8" />
           <Skeleton className="h-8 w-48" />
         </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {[1, 2, 3, 4, 5, 6].map((i) => (
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {[1, 2, 3, 4, 5].map((i) => (
             <Skeleton key={i} className="h-[120px] rounded-xl" />
           ))}
         </div>
@@ -376,7 +375,7 @@ export default function FormResponsesPage() {
       </div>
 
       {/* Stats Cards */}
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -470,43 +469,6 @@ export default function FormResponsesPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Payments
-            </CardTitle>
-            <DollarSign className="size-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {(() => {
-                const paidResponses = responses.filter(
-                  (r) => r.paymentStatus === "COMPLETED" && r.paymentAmount,
-                );
-                if (paidResponses.length === 0) return "--";
-                const byCurrency = new Map<string, number>();
-                for (const r of paidResponses) {
-                  const cur = r.paymentCurrency || "usd";
-                  byCurrency.set(cur, (byCurrency.get(cur) || 0) + (r.paymentAmount || 0));
-                }
-                return Array.from(byCurrency.entries())
-                  .map(([cur, total]) => formatPaymentAmount(total, cur))
-                  .join(" + ");
-              })()}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {responses.filter((r) => r.paymentStatus === "COMPLETED").length} paid
-              {(analytics?.pendingPaymentCount ?? 0) > 0 && (
-                <span>
-                  {" "}· {analytics?.pendingPaymentCount} pending
-                  {(analytics?.pendingPaymentAmount ?? 0) > 0 && (
-                    <span> ({formatPaymentAmount(analytics!.pendingPaymentAmount, "usd")})</span>
-                  )}
-                </span>
-              )}
-            </p>
-          </CardContent>
-        </Card>
       </div>
 
       {/* Responses Table */}
@@ -540,7 +502,6 @@ export default function FormResponsesPage() {
                   <TableHead>Response ID</TableHead>
                   <TableHead>Submitted</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Payment</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
@@ -634,7 +595,7 @@ function ResponseRow({
           )}
         </TableCell>
         <TableCell className="font-mono text-sm">
-          {truncate(response.id, 12)}
+          {response.id}
         </TableCell>
         <TableCell>
           <div className="flex items-center gap-2">
@@ -655,28 +616,6 @@ function ResponseRow({
           >
             {isCompleted ? "Completed" : "Partial"}
           </Badge>
-        </TableCell>
-        <TableCell>
-          {response.paymentStatus ? (
-            <Badge
-              variant="secondary"
-              className={cn(
-                response.paymentStatus === "COMPLETED"
-                  ? "bg-green-100 text-green-700 hover:bg-green-100 dark:bg-green-900/30 dark:text-green-400 dark:hover:bg-green-900/30"
-                  : response.paymentStatus === "PENDING"
-                    ? "bg-yellow-100 text-yellow-700 hover:bg-yellow-100 dark:bg-yellow-900/30 dark:text-yellow-400 dark:hover:bg-yellow-100"
-                    : response.paymentStatus === "FAILED"
-                      ? "bg-red-100 text-red-700 hover:bg-red-100 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/30"
-                      : "bg-gray-100 text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-800",
-              )}
-            >
-              {response.paymentStatus === "COMPLETED" && response.paymentAmount
-                ? formatPaymentAmount(response.paymentAmount, response.paymentCurrency || "usd")
-                : response.paymentStatus}
-            </Badge>
-          ) : (
-            <span className="text-xs text-muted-foreground">—</span>
-          )}
         </TableCell>
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1">
@@ -712,7 +651,7 @@ function ResponseRow({
       {/* Expanded answer details */}
       {isExpanded && (
         <TableRow className="bg-muted/30 hover:bg-muted/30">
-          <TableCell colSpan={6} className="p-0">
+          <TableCell colSpan={5} className="p-0">
             <div className="px-6 py-4">
               <h4 className="mb-3 text-sm font-semibold">Answers</h4>
               {response.answers.length === 0 ? (
