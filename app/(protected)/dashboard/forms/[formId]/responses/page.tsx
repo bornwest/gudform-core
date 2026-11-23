@@ -216,6 +216,7 @@ export default function FormResponsesPage() {
       "Status",
       "Payment Status",
       "Payment Amount",
+      "IP Address",
       ...questionIds.map((id) => questionMap.get(id) || "Unknown"),
     ];
 
@@ -236,6 +237,7 @@ export default function FormResponsesPage() {
         response.paymentAmount
           ? formatPaymentAmount(response.paymentAmount, response.paymentCurrency || "usd")
           : "",
+        response.ipAddress || "",
         ...questionIds.map((id) => answerMap.get(id) || ""),
       ];
     });
@@ -753,6 +755,12 @@ function ResponseRow({
                     {formatDate(
                       new Date(response.completedAt).toISOString(),
                     )}
+                  </div>
+                )}
+                {response.ipAddress && (
+                  <div>
+                    <span className="font-medium">IP address:</span>{" "}
+                    <span className="font-mono">{response.ipAddress}</span>
                   </div>
                 )}
               </div>

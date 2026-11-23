@@ -429,6 +429,12 @@ export default function ApiReferencePage() {
             required: false,
             desc: "Email notification on new response",
           },
+          {
+            name: "collectIpAddress",
+            type: "boolean",
+            required: false,
+            desc: "Store submitter IP addresses with responses",
+          },
         ]}
       />
 

@@ -20,6 +20,7 @@ export interface Form {
   showProgressBar: boolean;
   redirectUrl: string | null;
   notifyOnResponse: boolean;
+  collectIpAddress: boolean;
   paymentEnabled: boolean;
   paymentAmount: number | null;
   paymentCurrency: string;
@@ -67,6 +68,7 @@ export interface UpdateFormInput {
   showProgressBar?: boolean;
   redirectUrl?: string | null;
   notifyOnResponse?: boolean;
+  collectIpAddress?: boolean;
   webhookUrl?: string;
   collectionId?: string;
 }
