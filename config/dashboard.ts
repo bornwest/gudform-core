@@ -41,6 +41,12 @@ export const sidebarLinks: SidebarNavItem[] = [
         title: "Users",
         authorizeOnly: UserRole.ADMIN,
       },
+      {
+        href: "/admin/settings",
+        icon: "settings",
+        title: "Site settings",
+        authorizeOnly: UserRole.ADMIN,
+      },
       { href: "/dashboard/templates", icon: "layout", title: "Templates", saasOnly: true },
       {
         href: "/dashboard/integrations",

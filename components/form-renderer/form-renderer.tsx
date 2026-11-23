@@ -29,6 +29,7 @@ import {
 import { toast } from "sonner";
 
 import type { LogicRule } from "@/lib/types/logic";
+import { pushFormEvent } from "@/lib/gtm-events";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
 import { isPaymentOptionsForm, isLegacyPaymentForm } from "@/lib/types/payment";
 import { cn, contrastColor } from "@/lib/utils";
@@ -89,6 +90,8 @@ interface FormData {
   showProgressBar: boolean;
   displayMode?: string;
   redirectUrl: string | null;
+  /** True when the site's GTM container is loaded (never in preview). */
+  gtm?: boolean;
   questions: Question[];
   paymentEnabled: boolean;
   paymentAmount: number | null;
@@ -1803,6 +1806,22 @@ export function FormRenderer({
   const [visible, setVisible] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // Question IDs already sent to GTM, so going back and forward doesn't
+  // count a question twice.
+  const trackedQuestionsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (submitted) pushFormEvent("form_submit", form);
+    // Fires once, when the response is saved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
+  // Covers classic forms too, which render inside this component.
+  const viewTrackedRef = useRef(false);
+  useEffect(() => {
+    if (viewTrackedRef.current) return;
+    viewTrackedRef.current = true;
+    pushFormEvent("form_view", form);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showPaymentSelector, setShowPaymentSelector] = useState(false);
   const [pendingAnswerPayload, setPendingAnswerPayload] = useState<
     { questionId: string; value: string }[] | null
@@ -2159,6 +2178,20 @@ export function FormRenderer({
     if (transitioning) return;
 
     if (!validateCurrent()) return;
+
+    if (form.gtm && currentQuestion) {
+      const tracked = trackedQuestionsRef.current;
+      const number =
+        answerableQuestions.findIndex((q) => q.id === currentQuestion.id) + 1;
+      if (tracked.size === 0) pushFormEvent("form_start", form);
+      if (number > 0 && !tracked.has(currentQuestion.id)) {
+        pushFormEvent("form_question_submit", form, {
+          ...currentQuestion,
+          number,
+        });
+      }
+      tracked.add(currentQuestion.id);
+    }
 
     // Push current position onto the navigation history stack
     setNavigationHistory((prev) => [...prev, currentIndex]);

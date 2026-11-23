@@ -5,6 +5,7 @@ import { Check, Star } from "lucide-react";
 import { toast } from "sonner";
 
 import type { LogicRule } from "@/lib/types/logic";
+import { pushFormEvent } from "@/lib/gtm-events";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
 import { isPaymentOptionsForm, isLegacyPaymentForm } from "@/lib/types/payment";
 import { cn, contrastColor } from "@/lib/utils";
@@ -62,6 +63,8 @@ interface FormData {
   showProgressBar: boolean;
   displayMode?: string;
   redirectUrl: string | null;
+  /** True when the site's GTM container is loaded (never in preview). */
+  gtm?: boolean;
   questions: Question[];
   paymentEnabled: boolean;
   paymentAmount: number | null;
@@ -119,6 +122,14 @@ export function ClassicFormRenderer({
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  // Question IDs already sent to GTM, so going back and forward doesn't
+  // count a question twice.
+  const trackedQuestionsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (submitted) pushFormEvent("form_submit", form);
+    // Fires once, when the response is saved.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [submitted]);
   const [showPaymentSelector, setShowPaymentSelector] = useState(false);
   const [pendingAnswerPayload, setPendingAnswerPayload] = useState<
     { questionId: string; value: string }[] | null
@@ -213,6 +224,20 @@ export function ClassicFormRenderer({
 
   // Auto-save draft
   const updateAnswer = (questionId: string, value: string) => {
+    // Classic forms show every question at once, so a question counts as
+    // submitted the first time it's answered.
+    const tracked = trackedQuestionsRef.current;
+    if (form.gtm && value && !tracked.has(questionId)) {
+      const index = answerableQuestions.findIndex((q) => q.id === questionId);
+      if (index >= 0) {
+        if (tracked.size === 0) pushFormEvent("form_start", form);
+        tracked.add(questionId);
+        pushFormEvent("form_question_submit", form, {
+          ...answerableQuestions[index],
+          number: index + 1,
+        });
+      }
+    }
     setAnswers((prev) => {
       const next = { ...prev, [questionId]: value };
       if (!isPreview) {

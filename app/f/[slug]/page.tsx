@@ -10,6 +10,8 @@ import {
   recordFormView,
 } from "@/actions/form-actions";
 import { FormRenderer } from "@/components/form-renderer/form-renderer";
+import { GoogleTagManager } from "@next/third-parties/google";
+import { getGtmContainerId } from "@/lib/site-settings";
 
 import { FormClosed } from "./form-closed";
 
@@ -84,6 +86,9 @@ export default async function PublicFormPage({
     }).catch(() => {});
   }
 
+  // GTM runs on the live form only, never in preview.
+  const gtmContainerId = isPreview ? null : await getGtmContainerId();
+
   const formData = {
     id: form.id,
     slug: form.slug,
@@ -95,6 +100,7 @@ export default async function PublicFormPage({
     showProgressBar: form.showProgressBar,
     displayMode: form.displayMode,
     redirectUrl: form.redirectUrl,
+    gtm: Boolean(gtmContainerId),
     paymentEnabled: form.paymentEnabled,
     paymentAmount: form.paymentAmount,
     paymentCurrency: form.paymentCurrency,
@@ -120,6 +126,7 @@ export default async function PublicFormPage({
           Preview Mode — Changes are not live until published
         </div>
       )}
+      {gtmContainerId && <GoogleTagManager gtmId={gtmContainerId} />}
       <FormRenderer form={formData} isPreview={isPreview} isEmbed={isEmbed} />
     </>
   );

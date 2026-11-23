@@ -8,6 +8,8 @@ import { saasPrisma } from "@/lib/saas-prisma";
 import { getCurrentUser } from "@/lib/session";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 import { SubscriptionPlan } from "@/config/subscriptions";
+import { gtmIdError, normalizeGtmId } from "@/lib/gtm";
+import { saveSiteSettings } from "@/lib/site-settings";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -271,4 +273,31 @@ export async function revokeSubscription(userId: string) {
   });
 
   return { success: true };
+}
+
+// ---------------------------------------------------------------------------
+// Site settings
+// ---------------------------------------------------------------------------
+
+/**
+ * Sets the site-wide GTM container ID; "" turns GTM off. Returns an error
+ * message instead of throwing so the page can show it (server action errors
+ * are masked in production).
+ */
+export async function updateGtmContainerId(
+  input: string,
+): Promise<{ gtmContainerId: string | null } | { error: string }> {
+  try {
+    await requireAdmin();
+  } catch {
+    return { error: "Only admins can change site settings" };
+  }
+
+  const id = normalizeGtmId(input);
+  const error = gtmIdError(id);
+  if (error) return { error };
+
+  const gtmContainerId = id || null;
+  await saveSiteSettings({ gtmContainerId });
+  return { gtmContainerId };
 }
