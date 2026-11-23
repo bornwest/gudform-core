@@ -60,3 +60,6 @@ export interface FormData {
   }>;
   _count: { responses: number };
 }
+
+/** What respondents get after submitting: the thank-you screen, or a redirect. */
+export type AfterSubmitMode = "success" | "redirect";

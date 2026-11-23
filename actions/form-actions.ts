@@ -17,6 +17,7 @@ import {
   sharedFormsWhere,
 } from "@/lib/form-access";
 import { isFormOwner } from "@/lib/form-ownership";
+import { validateRedirectUrl } from "@/lib/url-validation";
 import {
   createCompletedFormResponse,
   createPendingPaymentResponse,
@@ -257,6 +258,11 @@ export async function updateForm(
     throw new Error("Response limit must be a whole number of 1 or more");
   }
 
+  if (data.redirectUrl) {
+    const { valid, error } = validateRedirectUrl(data.redirectUrl);
+    if (!valid) throw new Error(error);
+  }
+
   // Validate payment options if provided
   if (data.paymentOptions && data.paymentOptions.length > 0) {
     const currencyCode = data.paymentCurrency || form.paymentCurrency || "usd";
@@ -279,6 +285,7 @@ export async function updateForm(
   const updateData: any = { ...data };
   if (data.webhookUrl === "") updateData.webhookUrl = null;
   if (data.webhookSecret === "") updateData.webhookSecret = null;
+  if (data.redirectUrl === "") updateData.redirectUrl = null;
   if (data.closedMessage !== undefined) {
     updateData.closedMessage = data.closedMessage.trim() || null;
   }

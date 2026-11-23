@@ -19,6 +19,9 @@ const PRIVATE_IP_RANGES = [
 
 const BLOCKED_HOSTNAMES = ["localhost", "metadata.google.internal"];
 
+// A URL scheme such as "https:" or "mailto:".
+const URL_SCHEME = /^[a-z][a-z\d+.-]*:(?!\d)/i;
+
 function isPrivateHost(hostname: string): boolean {
   const lower = hostname.toLowerCase();
   if (BLOCKED_HOSTNAMES.includes(lower)) return true;
@@ -111,4 +114,14 @@ export function validateRedirectUrl(url: string): { valid: boolean; error?: stri
   }
 
   return { valid: true };
+}
+
+/**
+ * Turn what someone typed into a redirect URL, adding "https://" when they
+ * left the scheme off (e.g. "bornwest.com" → "https://bornwest.com").
+ */
+export function normalizeRedirectUrlInput(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+  return URL_SCHEME.test(trimmed) ? trimmed : `https://${trimmed}`;
 }

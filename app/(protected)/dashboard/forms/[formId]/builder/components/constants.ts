@@ -22,7 +22,7 @@ import { QuestionType } from "@prisma/client";
 
 import { FORM_COMPONENTS } from "@/config/form-components";
 
-import type { Question, QuestionProperties } from "./types";
+import type { AfterSubmitMode, Question, QuestionProperties } from "./types";
 
 export const QUESTION_TYPE_META: Record<
   QuestionType,
@@ -334,5 +334,15 @@ export function normalizeQuestionsThankYouLast<T extends { type: string }>(
   if (!lastThankYou) return questions;
   return [...rest, lastThankYou] as T[];
 }
+
+/** The choices in the Settings sidebar's "After submission" section. */
+export const AFTER_SUBMIT_OPTIONS: {
+  mode: AfterSubmitMode;
+  title: string;
+  hint: string;
+}[] = [
+  { mode: "success", title: "Success page", hint: "Show the thank-you screen" },
+  { mode: "redirect", title: "Redirect", hint: "Send respondents to a URL" },
+];
 
 export { FORM_COMPONENTS };

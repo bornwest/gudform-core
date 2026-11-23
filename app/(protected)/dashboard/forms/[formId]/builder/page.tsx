@@ -41,6 +41,10 @@ import type { LogicRule } from "@/lib/types/logic";
 import type { PaymentOption, PaymentSelectionMode } from "@/lib/types/payment";
 import { DEFAULT_CLOSED_MESSAGE } from "@/lib/screen-format";
 import {
+  normalizeRedirectUrlInput,
+  validateRedirectUrl,
+} from "@/lib/url-validation";
+import {
   contrastColor,
   FORM_SLUG_MAX_LENGTH,
   getPublicBaseUrl,
@@ -72,8 +76,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
-import type { Question, QuestionProperties } from "./components/types";
+import type {
+  AfterSubmitMode,
+  Question,
+  QuestionProperties,
+} from "./components/types";
 import {
+  AFTER_SUBMIT_OPTIONS,
   QUESTION_TYPE_GROUPS,
   SCREEN_TYPES,
   FORM_COMPONENTS,
@@ -188,6 +197,13 @@ export default function FormBuilderPage() {
   const savedResponseLimitRef = useRef("");
   const [closedMessage, setClosedMessage] = useState("");
   const savedClosedMessageRef = useRef("");
+  const [afterSubmit, setAfterSubmit] = useState<AfterSubmitMode>("success");
+  const [redirectUrl, setRedirectUrl] = useState("");
+  const [redirectUrlError, setRedirectUrlError] = useState<string | null>(null);
+  const savedRedirectUrlRef = useRef("");
+  // Redirect saves run one after another, so blurring the URL field by
+  // clicking "Success page" saves the URL before turning the redirect off.
+  const redirectSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const [formStatus, setFormStatus] = useState<FormStatus>(FormStatus.DRAFT);
   const [formThemeMode, setFormThemeMode] = useState<FormThemeMode>(
     FormThemeMode.LIGHT,
@@ -262,6 +278,9 @@ export default function FormBuilderPage() {
       savedResponseLimitRef.current = loadedResponseLimit;
       setClosedMessage(form.closedMessage || "");
       savedClosedMessageRef.current = form.closedMessage || "";
+      setRedirectUrl(form.redirectUrl || "");
+      savedRedirectUrlRef.current = form.redirectUrl || "";
+      setAfterSubmit(form.redirectUrl ? "redirect" : "success");
       setFormThemeMode(form.themeMode);
       setFormThemeColor(form.themeColor || "#6366f1");
       setFormBgColor(form.backgroundColor || "#ffffff");
@@ -742,6 +761,57 @@ export default function FormBuilderPage() {
       }
     },
     [formId],
+  );
+
+  // Saves the redirect URL; "" turns the redirect off. Resolves to false
+  // when the URL is invalid or the save fails.
+  const saveRedirectUrl = useCallback(
+    (value: string, { quiet = false } = {}): Promise<boolean> => {
+      const save = async () => {
+        if (value) {
+          const { valid, error } = validateRedirectUrl(value);
+          if (!valid) {
+            setRedirectUrlError(error ?? "Enter a valid URL");
+            return false;
+          }
+        }
+        setRedirectUrlError(null);
+        if (value === savedRedirectUrlRef.current) return true;
+        try {
+          await updateForm(formId, { redirectUrl: value });
+          savedRedirectUrlRef.current = value;
+          if (!quiet) {
+            toast.success(value ? "Redirect URL saved" : "Redirect turned off");
+          }
+          return true;
+        } catch {
+          toast.error("Failed to update redirect URL");
+          return false;
+        }
+      };
+      const run = redirectSaveQueueRef.current.then(save);
+      redirectSaveQueueRef.current = run;
+      return run;
+    },
+    [formId],
+  );
+
+  const handleAfterSubmitChange = useCallback(
+    async (mode: AfterSubmitMode) => {
+      setAfterSubmit(mode);
+      if (mode === "success") {
+        // The typed URL stays in the field, so switching back restores it.
+        if (await saveRedirectUrl("", { quiet: true })) {
+          setRedirectUrlError(null);
+          toast.success("Respondents will see the success page");
+        }
+      } else if (redirectUrl && validateRedirectUrl(redirectUrl).valid) {
+        if (await saveRedirectUrl(redirectUrl, { quiet: true })) {
+          toast.success("Respondents will be redirected");
+        }
+      }
+    },
+    [redirectUrl, saveRedirectUrl],
   );
 
   // Closing keeps the form's questions and drafts as they are; reopening
@@ -1459,10 +1529,86 @@ export default function FormBuilderPage() {
             {!isOwner ? (
               <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">
                 Only the form owner and team admins can change the form URL,
-                notifications, webhooks, auto-responder and payment settings.
+                what happens after submission, notifications, webhooks,
+                auto-responder and payment settings.
               </p>
             ) : (
               <>
+            {/* After submission */}
+            <div className="space-y-3">
+              <Label className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                After submission
+              </Label>
+              <div className="flex gap-2">
+                {AFTER_SUBMIT_OPTIONS.map(({ mode, title, hint }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    aria-pressed={afterSubmit === mode}
+                    onClick={() => {
+                      if (afterSubmit !== mode) handleAfterSubmitChange(mode);
+                    }}
+                    className={`flex-1 rounded-lg border-2 px-3 py-2.5 text-left text-xs font-medium transition-colors ${
+                      afterSubmit === mode
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-transparent bg-background hover:border-muted-foreground/20"
+                    }`}
+                  >
+                    <div className="font-semibold">{title}</div>
+                    <div className="mt-0.5 text-[10px] text-muted-foreground">
+                      {hint}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {afterSubmit === "redirect" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="redirect-url" className="text-sm">
+                    Redirect URL
+                  </Label>
+                  <Input
+                    id="redirect-url"
+                    type="url"
+                    inputMode="url"
+                    placeholder="https://example.com/thanks"
+                    value={redirectUrl}
+                    onChange={(e) => {
+                      setRedirectUrl(e.target.value);
+                      setRedirectUrlError(null);
+                    }}
+                    onBlur={() => {
+                      const normalized = normalizeRedirectUrlInput(redirectUrl);
+                      setRedirectUrl(normalized);
+                      saveRedirectUrl(normalized);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") e.currentTarget.blur();
+                    }}
+                    aria-invalid={Boolean(redirectUrlError)}
+                    spellCheck={false}
+                    autoComplete="off"
+                    className="h-9 text-sm"
+                  />
+                  {redirectUrlError ? (
+                    <p className="text-xs text-destructive">
+                      {redirectUrlError}
+                    </p>
+                  ) : !redirectUrl ? (
+                    <p className="text-xs text-amber-600 dark:text-amber-500">
+                      Respondents see the success page until you add a URL.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      Respondents see the thank-you screen, then go to this
+                      page a few seconds later.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <Separator className="my-4" />
+
             {/* Form URL */}
             <div className="space-y-3">
               <Label
