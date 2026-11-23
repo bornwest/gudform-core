@@ -3,7 +3,10 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { ownedFormsWhere } from "@/lib/form-access";
 import { authorizeApiRequest } from "@/lib/api-auth";
-import { createCompletedFormResponse } from "@/lib/form-response";
+import {
+  createCompletedFormResponse,
+  parseResponseTiming,
+} from "@/lib/form-response";
 import { COUNTABLE_RESPONSE_WHERE } from "@/lib/response-counts";
 
 interface RouteContext {
@@ -85,8 +88,18 @@ export async function POST(req: Request, context: RouteContext) {
     );
   }
 
+  const timing = parseResponseTiming(body);
+  if (!timing.ok) {
+    return NextResponse.json({ error: timing.error }, { status: 400 });
+  }
+
   try {
-    const response = await createCompletedFormResponse(formId, answers);
+    const response = await createCompletedFormResponse(
+      formId,
+      answers,
+      undefined,
+      timing.options,
+    );
     return NextResponse.json({ response }, { status: 201 });
   } catch (error) {
     return NextResponse.json(
