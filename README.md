@@ -58,6 +58,7 @@ If this is useful, **[star the public repo](https://github.com/gudlab/gudform-co
 ### Storage
 
 - **AWS S3 uploads** ([#6](https://github.com/bornwest/gudform-core/pull/6)): when all four of `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY` and `S3_BUCKET_NAME` are set, uploads go to S3 and the other storage settings are ignored for new files. `S3_PUBLIC_URL` and `S3_KEY_PREFIX` are optional; see `.env.example`. Uploaded files no longer expire, and the cleanup cron job (`/api/cron/cleanup-files`) was removed.
+- **Private S3 bucket with signed URLs**: S3 uploads are saved as app URLs (`<NEXT_PUBLIC_APP_URL>/api/files/<key>`) instead of direct bucket URLs. Opening one redirects to a signed S3 URL that lasts 5 minutes, so the bucket can block public access and saved links (in responses, the CSV export, webhooks and emails) keep working. Only files with a `FileUpload` record are signed, and downloads keep their original filename. Anyone with the link can still open the file, which is how welcome and choice images load for visitors. The bucket's IAM user needs `s3:PutObject` and `s3:GetObject`. To fix URLs saved before this change, run `npx tsx --env-file=.env scripts/rewrite-s3-file-urls.ts` to count them, then again with `--apply` to rewrite them. `S3_PUBLIC_URL` is now only used by that script to find the old URLs. See `getSignedS3FileUrl` in `lib/storage.ts`.
 
 ### Admin and navigation
 
