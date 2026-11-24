@@ -666,10 +666,22 @@ function ResponseRow({
                         {answer.question.title}
                       </div>
                       <div className="mt-0.5 text-sm">
-                        {formatChoiceAnswerForDisplay(answer.value) || (
-                          <span className="italic text-muted-foreground">
-                            No answer
-                          </span>
+                        {answer.question.type === "FILE_UPLOAD" &&
+                        /^https?:\/\//.test(answer.value) ? (
+                          <a
+                            href={answer.value}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="break-all text-primary underline-offset-4 hover:underline"
+                          >
+                            {answer.value}
+                          </a>
+                        ) : (
+                          formatChoiceAnswerForDisplay(answer.value) || (
+                            <span className="italic text-muted-foreground">
+                              No answer
+                            </span>
+                          )
                         )}
                       </div>
                     </div>
