@@ -1447,17 +1447,22 @@ function FileUploadInput({
   onChange,
   themeColor,
   formId,
+  fileName,
+  onFileName,
 }: {
   question: Question;
   value: string;
   onChange: (v: string) => void;
   themeColor: string;
   formId: string;
+  /** Name of the uploaded file in `value`, kept by FormRenderer so it
+   *  survives going back and forth between questions. */
+  fileName?: string;
+  onFileName: (url: string, name: string) => void;
 }) {
   const c = useC();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [fileName, setFileName] = useState<string>("");
-  const [fileUrl, setFileUrl] = useState<string>(value || "");
+  const [uploadingName, setUploadingName] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string>("");
   const [dragOver, setDragOver] = useState(false);
@@ -1489,17 +1494,16 @@ function FileUploadInput({
     }
 
     setUploading(true);
-    setFileName(file.name);
+    setUploadingName(file.name);
 
     try {
       const { url } = await uploadFile(file, formId);
-      setFileUrl(url);
+      onFileName(url, file.name);
       onChange(url);
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Upload failed. Please try again.",
       );
-      setFileName("");
     } finally {
       setUploading(false);
     }
@@ -1567,8 +1571,8 @@ function FileUploadInput({
           )}
         </div>
         {uploading ? (
-          <p className="text-base font-medium">Uploading {fileName}...</p>
-        ) : fileUrl ? (
+          <p className="text-base font-medium">Uploading {uploadingName}...</p>
+        ) : value ? (
           <div className="text-center">
             <p className="text-base font-medium">{fileName || "File uploaded"}</p>
             <p className={cn("mt-1 text-sm", c.textMuted)}>
@@ -1606,6 +1610,8 @@ function QuestionView({
   themeColor,
   onNext,
   formId,
+  fileNames,
+  onFileName,
 }: {
   question: Question;
   questionNumber: number;
@@ -1615,6 +1621,8 @@ function QuestionView({
   themeColor: string;
   onNext: () => void;
   formId: string;
+  fileNames: Record<string, string>;
+  onFileName: (url: string, name: string) => void;
 }) {
   const c = useC();
 
@@ -1719,6 +1727,8 @@ function QuestionView({
             onChange={onChange}
             themeColor={themeColor}
             formId={formId}
+            fileName={value ? fileNames[value] : undefined}
+            onFileName={onFileName}
           />
         );
       default:
@@ -1832,6 +1842,15 @@ export function FormRenderer({
   const visitedRef = useRef(new Set<number>());
   const resumeTokenRef = useRef<string | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Original names of uploaded files, by file URL. Answers only hold the URL,
+  // so this is what lets the upload field show the name again after going
+  // back, or after a reload (it's saved with the local draft).
+  const [fileNames, setFileNames] = useState<Record<string, string>>({});
+  const fileNamesRef = useRef<Record<string, string>>({});
+  const rememberFileName = useCallback((url: string, name: string) => {
+    fileNamesRef.current = { ...fileNamesRef.current, [url]: name };
+    setFileNames(fileNamesRef.current);
+  }, []);
 
   const questions = form.questions;
   const currentQuestion = questions[currentIndex];
@@ -1843,8 +1862,11 @@ export function FormRenderer({
     const params = new URLSearchParams(window.location.search);
     const fromUrl = params.get("resume");
     const stored = window.localStorage.getItem(`gudform:draft:${form.id}`);
-    let parsed: { resumeToken?: string; answers?: Record<string, string> } | null =
-      null;
+    let parsed: {
+      resumeToken?: string;
+      answers?: Record<string, string>;
+      fileNames?: Record<string, string>;
+    } | null = null;
     try {
       parsed = stored ? JSON.parse(stored) : null;
     } catch {
@@ -1854,6 +1876,10 @@ export function FormRenderer({
     if (parsed?.answers) {
       setAnswers(parsed.answers);
     }
+    if (parsed?.fileNames && typeof parsed.fileNames === "object") {
+      fileNamesRef.current = { ...parsed.fileNames, ...fileNamesRef.current };
+      setFileNames(fileNamesRef.current);
+    }
     if (!token) return;
     loadFormDraft(form.id, token)
       .then((draft) => {
@@ -1862,7 +1888,11 @@ export function FormRenderer({
         setAnswers(draft.answers);
         window.localStorage.setItem(
           `gudform:draft:${form.id}`,
-          JSON.stringify({ resumeToken: draft.resumeToken, answers: draft.answers }),
+          JSON.stringify({
+            resumeToken: draft.resumeToken,
+            answers: draft.answers,
+            fileNames: fileNamesRef.current,
+          }),
         );
       })
       .catch(() => {});
@@ -2390,6 +2420,7 @@ export function FormRenderer({
                   JSON.stringify({
                     resumeToken: result.resumeToken,
                     answers: next,
+                    fileNames: fileNamesRef.current,
                   }),
                 );
               })
@@ -2446,6 +2477,8 @@ export function FormRenderer({
         themeColor={themeColor}
         onNext={goNext}
         formId={form.id}
+        fileNames={fileNames}
+        onFileName={rememberFileName}
       />
     );
   };
