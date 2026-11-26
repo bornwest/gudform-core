@@ -61,15 +61,41 @@ export async function triggerPostSubmissionActions(
 
   // 2. Webhook delivery
   if (form.webhookUrl) {
-    const { deliverWebhook } = await import("@/lib/webhooks");
-    await deliverWebhook(form.webhookUrl, form.webhookSecret, {
-      event: "form.response.completed",
-      formId: form.id,
-      formTitle: form.title,
-      responseId,
-      answers: answerDetails,
-      timestamp: new Date().toISOString(),
-    });
+    // Log only the host: webhook paths and query strings can carry secrets.
+    let webhookHost = "invalid URL";
+    try {
+      webhookHost = new URL(form.webhookUrl).host;
+    } catch {
+      /* keep placeholder */
+    }
+    const logContext = `form ${form.id}, response ${responseId}, host ${webhookHost}`;
+
+    try {
+      const { deliverWebhook } = await import("@/lib/webhooks");
+      const result = await deliverWebhook(form.webhookUrl, form.webhookSecret, {
+        event: "form.response.completed",
+        formId: form.id,
+        formTitle: form.title,
+        responseId,
+        answers: answerDetails,
+        timestamp: new Date().toISOString(),
+      });
+
+      if (result.success) {
+        console.info(
+          `[post-submission] Webhook delivered (${logContext}, HTTP ${result.statusCode})`,
+        );
+      } else {
+        console.error(
+          `[post-submission] Webhook delivery failed after retries (${logContext}): ${result.error}`,
+        );
+      }
+    } catch (error) {
+      console.error(
+        `[post-submission] Webhook delivery threw (${logContext}):`,
+        error,
+      );
+    }
   }
 
   // 3. Auto-responder to respondent (Pro+ only)

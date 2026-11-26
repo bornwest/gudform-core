@@ -2,18 +2,26 @@ export const TURNSTILE_FORM_SUBMIT_ACTION = "form_submit";
 
 const FAIL_MESSAGE = "Couldn't verify this submission. Try again.";
 
+// Upper bound on waiting for a token, so a widget that never calls back
+// can't leave the submit button spinning forever.
+const TOKEN_TIMEOUT_MS = 30_000;
+
 type TurnstileApi = {
   render: (
     container: HTMLElement,
     options: {
       sitekey: string;
       action: string;
-      size: "invisible";
+      // Invisible mode is set on the sitekey in the Cloudflare dashboard;
+      // `size` only accepts "normal" | "compact" | "flexible".
+      execution: "render" | "execute";
       callback: (token: string) => void;
       "error-callback"?: () => void;
+      "expired-callback"?: () => void;
+      "timeout-callback"?: () => void;
     },
   ) => string;
-  execute?: (widgetId: string) => void;
+  execute: (widgetId: string) => void;
   reset: (widgetId: string) => void;
   remove: (widgetId: string) => void;
 };
@@ -75,28 +83,41 @@ export async function getTurnstileToken(): Promise<string | undefined> {
   document.body.appendChild(container);
 
   return new Promise((resolve, reject) => {
-    const cleanup = (widgetId: string) => {
-      try {
-        api.remove(widgetId);
-      } catch {
-        /* ignore */
+    let widgetId: string | undefined;
+    let settled = false;
+
+    const finish = (token?: string) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timer);
+      if (widgetId !== undefined) {
+        try {
+          api.remove(widgetId);
+        } catch {
+          /* ignore */
+        }
       }
       container.remove();
+      if (token) resolve(token);
+      else reject(new Error(FAIL_MESSAGE));
     };
 
-    const widgetId = api.render(container, {
-      sitekey: key,
-      action: TURNSTILE_FORM_SUBMIT_ACTION,
-      size: "invisible",
-      callback: (token) => {
-        cleanup(widgetId);
-        resolve(token);
-      },
-      "error-callback": () => {
-        cleanup(widgetId);
-        reject(new Error(FAIL_MESSAGE));
-      },
-    });
-    api.execute?.(widgetId);
+    const fail = () => finish();
+    const timer = window.setTimeout(fail, TOKEN_TIMEOUT_MS);
+
+    try {
+      widgetId = api.render(container, {
+        sitekey: key,
+        action: TURNSTILE_FORM_SUBMIT_ACTION,
+        execution: "execute",
+        callback: (token) => finish(token),
+        "error-callback": fail,
+        "expired-callback": fail,
+        "timeout-callback": fail,
+      });
+      api.execute(widgetId);
+    } catch {
+      fail();
+    }
   });
 }
