@@ -284,7 +284,7 @@ model Answer {
   createdAt DateTime @default(now()) @map(name: "created_at")
 
   response FormResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
-  question Question     @relation(fields: [questionId], references: [id], onDelete: Restrict)
+  question Question     @relation(fields: [questionId], references: [id], onDelete: NoAction)
 
   @@unique([responseId, questionId])
   @@index([responseId])
