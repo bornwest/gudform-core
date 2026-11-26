@@ -368,9 +368,17 @@ export async function deleteForm(formId: string) {
   const user = await getCurrentUser();
   if (!user?.id) throw new Error("Unauthorized");
 
-  await prisma.form.delete({
-    where: { id: formId, userId: user.id },
-  });
+  // Delete responses (and, by cascade, their answers) before the form. Letting
+  // the form delete cascade to both questions and responses at once fails:
+  // Postgres can check the answers → questions key before the answers are gone.
+  await prisma.$transaction([
+    prisma.formResponse.deleteMany({
+      where: { form: { id: formId, userId: user.id } },
+    }),
+    prisma.form.delete({
+      where: { id: formId, userId: user.id },
+    }),
+  ]);
 
   revalidatePath("/dashboard");
 }
