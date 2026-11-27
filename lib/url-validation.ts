@@ -17,7 +17,7 @@ const PRIVATE_IP_RANGES = [
   /^fe80:/i,
 ];
 
-const BLOCKED_HOSTNAMES = ["localhost", "metadata.google.internal"];
+const BLOCKED_HOSTNAMES = [ "localhost", "metadata.google.internal" ];
 
 // A URL scheme such as "https:" or "mailto:".
 const URL_SCHEME = /^[a-z][a-z\d+.-]*:(?!\d)/i;
@@ -33,6 +33,7 @@ function isPrivateHost(hostname: string): boolean {
  */
 export function validateWebhookUrl(url: string): { valid: boolean; error?: string } {
   let parsed: URL;
+  
   try {
     parsed = new URL(url);
   } catch {
