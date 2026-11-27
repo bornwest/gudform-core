@@ -33,6 +33,7 @@ function isPrivateHost(hostname: string): boolean {
  */
 export function validateWebhookUrl(url: string): { valid: boolean; error?: string } {
   let parsed: URL;
+  
   try {
     parsed = new URL(url);
   } catch {
